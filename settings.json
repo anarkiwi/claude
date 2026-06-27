@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd:*)",
+      "Bash(echo:*)",
+      "Bash(git status:*)",
+      "Bash(git log:*)",
+      "Bash(git diff:*)",
+      "Bash(git branch:*)",
+      "Bash(git worktree list:*)",
+      "Bash(git fetch:*)",
+      "Bash(git ls-remote:*)",
+      "Bash(git show:*)",
+      "Bash(gh pr list:*)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr checks:*)",
+      "Bash(ls:*)",
+      "Bash(grep:*)",
+      "Bash(find:*)",
+      "Bash(wc:*)",
+      "Bash(head:*)",
+      "Bash(cat:*)",
+      "Bash(git commit:*)",
+      "Bash(git reset --soft:*)",
+      "Bash(git push --force origin main:*)",
+      "Bash(git push -f origin main:*)"
+    ],
+    "defaultMode": "auto"
+  },
+  "enabledPlugins": {
+    "pyright-lsp@claude-plugins-official": true
+  },
+  "theme": "dark",
+  "skipAutoPermissionPrompt": true,
+  "agentPushNotifEnabled": true
+}
