@@ -3,29 +3,23 @@
 Shared user-level guidance, applied across all projects. Project-specific
 `CLAUDE.md` files override or extend anything here.
 
-## Working style
-- Make the smallest change that solves the problem. Don't refactor unrelated code.
-- Match the surrounding code: naming, structure, comment density, and idioms.
-- When unsure between approaches, state a recommendation and proceed rather than
-  surveying every option.
-- Don't add comments that restate the code. Comment the non-obvious "why".
-- Prefer editing existing files over creating new ones. Don't create docs,
-  READMEs, or summary files unless asked.
+* for all code:
+    * minimize narrative comments (especially comments with overly specific numbers or travel-diary style narrative). stick to compactly stated facts.
+    * use subagents to execute changes where possible, minimizing complexity so subagents are most likely to succeed on their own.
+    * commit and push to PRs, always watch PR status and fix broken tests and merge on green.
+* for public git repos:
+    * must not include any copyrighted material, but you can can retrieve and cache for fixtures.
+* if the project is a git repo:
+    * must have dependabot
+    * must have CI tests
+    * if the tests involve non-trivial software installs or configs, they must run in Docker and must be leverage multistage to reduce rebuild times for dependencies
+* for python projects:
+    * never test or add EOL python versions or non-Linux platforms.
+    * must pass black formatting
+    * must pass pylint (in particular no unused imports or vars)
+    * must use xdist/auto
+    * test coverage must be > 85%
+    * write code that is numpy-first and numba compatible wherever possible, only fall back to generic python where you have to.
+    * when developing code, no script can take more than 60s CPU time (hard timeout). If needs longer refactor it for efficiency (e.g. use multiple processes or better algorithms). if it still takes too long ask for explicit authorization.
 
-## Before finishing
-- Run the project's linter/formatter and tests if they exist; report real
-  results, including failures. Don't claim something works unverified.
-- Leave the tree clean: no stray debug prints, commented-out blocks, or scratch
-  files.
 
-## Git
-- Branch before committing if on the default branch. Commit/push only when asked.
-- Write concise, imperative commit messages explaining the why, not a file list.
-
-## Languages
-- Python: type hints on new code, prefer stdlib, follow PEP 8 / black formatting.
-- Shell: prefer `set -euo pipefail`; quote variables; avoid bashisms in `sh`.
-
-## Security & ops
-- Never commit secrets, tokens, or credentials. Read config from env/secret stores.
-- Validate and sanitize external input; fail closed.
