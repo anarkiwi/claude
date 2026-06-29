@@ -1,10 +1,11 @@
 # Claude Code interactive container.
 # Runs the native claude binary as a non-root user whose UID/GID match the
-# host, so bind-mounted ~/.ssh and /scratch keep correct ownership. Only the
-# host's ~/.claude credentials, settings and global CLAUDE.md are bind-mounted
-# in; all session state (conversations, history, tasks) stays in the container
-# and is discarded on exit. Includes the docker CLI (no daemon) for driving the
-# host socket.
+# host, so bind-mounted ~/.ssh and /scratch keep correct ownership. The host's
+# ~/.claude credentials, settings and global CLAUDE.md are bind-mounted in, and
+# ~/.claude.json is seeded (copied, not mounted) by the entrypoint so the client
+# recognises the existing authenticated install; all session state
+# (conversations, history, tasks) stays in the container and is discarded on
+# exit. Includes the docker CLI (no daemon) for driving the host socket.
 FROM debian:bookworm-slim
 
 ARG USERNAME=josh
@@ -16,7 +17,11 @@ ARG DOCKER_GID=998
 ENV DEBIAN_FRONTEND=noninteractive
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Use http for apt transport so a caching proxy can serve hits; the signed-by
+# keyrings below still verify Release signatures, so packages stay authenticated.
+RUN sed -i 's|https://|http://|g' \
+        /etc/apt/sources.list /etc/apt/sources.list.d/*.sources 2>/dev/null || true; \
+    apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates curl gnupg git openssh-client \
         ripgrep less jq python3 python3-pip python3-venv \
         build-essential sudo \
@@ -27,7 +32,7 @@ RUN install -m 0755 -d /etc/apt/keyrings \
     && curl -fsSL https://download.docker.com/linux/debian/gpg \
         -o /etc/apt/keyrings/docker.asc \
     && chmod a+r /etc/apt/keyrings/docker.asc \
-    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian bookworm stable" \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] http://download.docker.com/linux/debian bookworm stable" \
         > /etc/apt/sources.list.d/docker.list \
     && apt-get update \
     && apt-get install -y --no-install-recommends docker-ce-cli docker-buildx-plugin docker-compose-plugin \
@@ -37,7 +42,7 @@ RUN install -m 0755 -d /etc/apt/keyrings \
 RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
         -o /etc/apt/keyrings/githubcli-archive-keyring.gpg \
     && chmod a+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
-    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] http://cli.github.com/packages stable main" \
         > /etc/apt/sources.list.d/github-cli.list \
     && apt-get update \
     && apt-get install -y --no-install-recommends gh \
@@ -67,4 +72,6 @@ ENV PATH="/home/${USERNAME}/.local/bin:${PATH}"
 ARG CACHEBUST=0
 RUN curl -fsSL https://claude.ai/install.sh | bash
 
-ENTRYPOINT ["claude"]
+COPY --chmod=0755 entrypoint.sh /usr/local/bin/entrypoint.sh
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
