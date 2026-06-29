@@ -32,6 +32,13 @@ docker build \
     --build-arg "CACHEBUST=$(date +%s)" \
     -t "${IMAGE}" "$(dirname "$0")"
 
+# Default to an interactive Remote Control session named <host>-<dir> when no
+# explicit claude args are given; passing any args overrides this default.
+RUN_ARGS=("$@")
+if [[ ${#RUN_ARGS[@]} -eq 0 ]]; then
+    RUN_ARGS=(--remote-control "$(hostname -s)-$(basename "$(pwd)")")
+fi
+
 exec docker run --rm -it \
     -v /scratch:/scratch \
     -v /var/run/docker.sock:/var/run/docker.sock \
@@ -45,4 +52,4 @@ exec docker run --rm -it \
     -v "${HOME}/.config/gh:${HOME}/.config/gh" \
     -v "${HOME}/.gitconfig:${HOME}/.gitconfig:ro" \
     -w "$(pwd)" \
-    "${IMAGE}" "$@"
+    "${IMAGE}" "${RUN_ARGS[@]}"
