@@ -6,7 +6,7 @@
 # recognises the existing authenticated install; all session state
 # (conversations, history, tasks) stays in the container and is discarded on
 # exit. Includes the docker CLI (no daemon) for driving the host socket.
-FROM debian:bookworm-slim
+FROM ubuntu:24.04
 
 ARG USERNAME=josh
 ARG UID=1000
@@ -28,11 +28,13 @@ RUN sed -i 's|https://|http://|g' \
     && rm -rf /var/lib/apt/lists/*
 
 # Docker CLI only (talks to the bind-mounted host daemon socket).
+# Stays on https: download.docker.com (CloudFront) 301-redirects http to https,
+# so a caching proxy can't serve hits here regardless; http just adds a redirect.
 RUN install -m 0755 -d /etc/apt/keyrings \
-    && curl -fsSL https://download.docker.com/linux/debian/gpg \
+    && curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
         -o /etc/apt/keyrings/docker.asc \
     && chmod a+r /etc/apt/keyrings/docker.asc \
-    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] http://download.docker.com/linux/debian bookworm stable" \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu noble stable" \
         > /etc/apt/sources.list.d/docker.list \
     && apt-get update \
     && apt-get install -y --no-install-recommends docker-ce-cli docker-buildx-plugin docker-compose-plugin \
@@ -49,7 +51,10 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
     && rm -rf /var/lib/apt/lists/*
 
 # Create user/group matching the host. Reuse the GID if it already exists.
-RUN if ! getent group "${GID}" >/dev/null; then groupadd -g "${GID}" "${USERNAME}"; fi \
+# Ubuntu 24.04 ships a default "ubuntu" user at UID/GID 1000; remove it first
+# so it doesn't collide with the host-matched UID/GID below.
+RUN userdel -r ubuntu 2>/dev/null || true; \
+    if ! getent group "${GID}" >/dev/null; then groupadd -g "${GID}" "${USERNAME}"; fi \
     && useradd -l -m -u "${UID}" -g "${GID}" -s /bin/bash "${USERNAME}" \
     && echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/"${USERNAME}" \
     && chmod 0440 /etc/sudoers.d/"${USERNAME}" \
