@@ -1,7 +1,10 @@
 # Claude Code interactive container.
 # Runs the native claude binary as a non-root user whose UID/GID match the
-# host, so bind-mounted ~/.claude, ~/.ssh and /scratch keep correct ownership.
-# Includes the docker CLI (no daemon) for driving the host docker socket.
+# host, so bind-mounted ~/.ssh and /scratch keep correct ownership. Only the
+# host's ~/.claude credentials, settings and global CLAUDE.md are bind-mounted
+# in; all session state (conversations, history, tasks) stays in the container
+# and is discarded on exit. Includes the docker CLI (no daemon) for driving the
+# host socket.
 FROM debian:bookworm-slim
 
 ARG USERNAME=josh
@@ -44,7 +47,8 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
 RUN if ! getent group "${GID}" >/dev/null; then groupadd -g "${GID}" "${USERNAME}"; fi \
     && useradd -l -m -u "${UID}" -g "${GID}" -s /bin/bash "${USERNAME}" \
     && echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/"${USERNAME}" \
-    && chmod 0440 /etc/sudoers.d/"${USERNAME}"
+    && chmod 0440 /etc/sudoers.d/"${USERNAME}" \
+    && install -d -o "${UID}" -g "${GID}" -m 0700 "/home/${USERNAME}/.claude"
 
 # docker group with the host's GID, so the user can use the mounted socket.
 RUN if getent group "${DOCKER_GID}" >/dev/null; then \
