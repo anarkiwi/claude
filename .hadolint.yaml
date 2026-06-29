@@ -1,0 +1,3 @@
+# Intentionally unpinned apt versions: the image tracks latest by design.
+ignored:
+  - DL3008

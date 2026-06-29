@@ -11,6 +11,7 @@ ARG GID=1000
 ARG DOCKER_GID=998
 
 ENV DEBIAN_FRONTEND=noninteractive
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates curl gnupg git openssh-client \
@@ -41,7 +42,7 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
 
 # Create user/group matching the host. Reuse the GID if it already exists.
 RUN if ! getent group "${GID}" >/dev/null; then groupadd -g "${GID}" "${USERNAME}"; fi \
-    && useradd -m -u "${UID}" -g "${GID}" -s /bin/bash "${USERNAME}" \
+    && useradd -l -m -u "${UID}" -g "${GID}" -s /bin/bash "${USERNAME}" \
     && echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/"${USERNAME}" \
     && chmod 0440 /etc/sudoers.d/"${USERNAME}"
 
