@@ -32,14 +32,24 @@ docker build \
     --build-arg "CACHEBUST=$(date +%s)" \
     -t "${IMAGE}" "$(dirname "$0")"
 
-# Default to an interactive Remote Control session named <host>-<dir> when no
-# explicit claude args are given; passing any args overrides this default.
+# The container and its Remote Control session share one name: <host>-<dir>.
+NAME="$(hostname -s)-$(basename "$(pwd)")"
+
+# Default to an interactive Remote Control session under NAME when no explicit
+# claude args are given; passing any args overrides this default.
 RUN_ARGS=("$@")
 if [[ ${#RUN_ARGS[@]} -eq 0 ]]; then
-    RUN_ARGS=(--remote-control "$(hostname -s)-$(basename "$(pwd)")")
+    RUN_ARGS=(--remote-control "${NAME}")
 fi
 
+# Persist the container's /tmp on the host, one dir per container name. Created
+# on first run; reused (left intact) on later runs so the venv/session survive.
+CONTAINER_TMP="/scratch/tmp/${NAME}"
+mkdir -p "${CONTAINER_TMP}"
+
 exec docker run --rm -it \
+    --name "${NAME}" \
+    -v "${CONTAINER_TMP}:/tmp" \
     -v /scratch:/scratch \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v /etc/pip.conf:/etc/pip.conf:ro \
