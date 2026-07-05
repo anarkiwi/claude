@@ -5,11 +5,12 @@ Shared user-level guidance, applied across all projects. Project-specific
 
 * for all code:
     * minimize narrative comments (especially comments with overly specific numbers or travel-diary style narrative). stick to compactly stated facts.
-    * use subagents to execute changes where possible, minimizing complexity so subagents are most likely to succeed on their own.
+    * use subagents to execute changes where possible, minimizing complexity and the need for design decisions so subagents are most likely to succeed on their own.
     * commit and push to PRs, always watch PR status and fix broken tests and merge on green.
 * for public git repos:
     * must not include any copyrighted material, but you can can retrieve and cache for fixtures.
 * if the project is a git repo:
+    * a top level README must never have narrative in it - it must be a compact summary of the project and how to use it, with references to more detailed docs in a docs subdirectory.
     * must have dependabot
     * must have CI tests
     * if the tests involve non-trivial software installs or configs, they must run in Docker and must be leverage multistage to reduce rebuild times for dependencies
