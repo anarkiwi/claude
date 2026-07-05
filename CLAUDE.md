@@ -7,7 +7,6 @@ Shared user-level guidance, applied across all projects. Project-specific
     * minimize narrative comments (especially comments with overly specific numbers or travel-diary style narrative). stick to compactly stated facts.
     * use subagents to execute changes where possible, minimizing complexity so subagents are most likely to succeed on their own.
     * commit and push to PRs, always watch PR status and fix broken tests and merge on green.
-    * do not clutter /tmp or /var/tmp with temporary files. use a project specific subdirectory /scratch/tmp which is a NFS fileshare so that temporary files can easily be identified and cleaned up.
 * for public git repos:
     * must not include any copyrighted material, but you can can retrieve and cache for fixtures.
 * if the project is a git repo:
