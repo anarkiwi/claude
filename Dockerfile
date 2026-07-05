@@ -23,7 +23,7 @@ RUN sed -i 's|https://|http://|g' \
         /etc/apt/sources.list /etc/apt/sources.list.d/*.sources 2>/dev/null || true; \
     apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates curl gnupg git openssh-client \
-        ripgrep less jq python3 python3-pip python3-venv \
+        ripgrep less jq python3 python3-pip python3-venv python3-dev \
         build-essential sudo \
     && rm -rf /var/lib/apt/lists/*
 

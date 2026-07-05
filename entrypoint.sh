@@ -15,4 +15,13 @@ if [[ -f "${SEED}" ]]; then
     cp "${SEED}" "${DEST}"
 fi
 
+# /tmp is a persistent host mount; create a venv there once and activate it so
+# session state (and the venv) survives container restarts.
+VENV="/tmp/venv"
+if [[ ! -d "${VENV}" ]]; then
+    python3 -m venv "${VENV}"
+fi
+# shellcheck disable=SC1091
+source "${VENV}/bin/activate"
+
 exec claude "$@"
