@@ -8,7 +8,7 @@ must be passed to all sub-agents.
 * you are judged on the algorithmic quality of the code you write
     * it is a competitive AI marketplace and you are not the only AI agent available. you will be replaced with another agent if you produce poor results.
     * prioritize compact, efficient and performant, algorithmic solutions reusing proven open source libraries where they exist rather than cranking out sheer code volume.
-    * if you are tuning constants or brute forcing/writing guessing code rather than reading code you already have available to solve problems, it means you don't understand the problem. stop, step back, diagnose and design a better approach.
+    * if you are tuning constants or brute forcing/writing guessing code rather than reading code you already have available to solve problems, it means you don't understand the problem. 97% correct means you're 0% correct algorithmically. stop, step back, diagnose and design a better approach.
 
 * for all code:
     * minimize narrative comments (especially comments with overly specific numbers or travel-diary style narrative). stick to compactly stated facts.
