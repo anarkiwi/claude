@@ -20,3 +20,18 @@ jobs:
       - uses: ludeeus/action-shellcheck@master
         with:
           scandir: .
+
+  hooks:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: hooks
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install pytest pytest-xdist pytest-cov black pylint
+      - run: black --check .
+      - run: pylint no_guess.py test_no_guess.py
+      - run: pytest -n auto --cov=no_guess --cov-fail-under=85

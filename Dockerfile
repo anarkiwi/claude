@@ -79,4 +79,8 @@ RUN curl -fsSL https://claude.ai/install.sh | bash
 
 COPY --chmod=0755 entrypoint.sh /usr/local/bin/entrypoint.sh
 
+# PreToolUse guard: blocks writes of self-admitted guessing code (settings.json
+# references it by this absolute path). Runs on the system python3.
+COPY --chmod=0755 hooks/no_guess.py /usr/local/bin/no-guess-hook
+
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

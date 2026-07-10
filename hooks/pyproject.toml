@@ -1,0 +1,10 @@
+[tool.black]
+line-length = 100
+
+[tool.pylint.format]
+max-line-length = 100
+
+[tool.pylint."messages control"]
+# Self-documenting single-purpose hook + tests; docstrings on every helper add
+# noise without information.
+disable = ["missing-function-docstring", "missing-module-docstring"]
