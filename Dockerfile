@@ -6,7 +6,7 @@
 # recognises the existing authenticated install; all session state
 # (conversations, history, tasks) stays in the container and is discarded on
 # exit. Includes the docker CLI (no daemon) for driving the host socket.
-FROM ubuntu:24.04
+FROM ubuntu:26.04
 
 ARG USERNAME=josh
 ARG UID=1000
