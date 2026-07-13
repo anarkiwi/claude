@@ -79,4 +79,8 @@ RUN curl -fsSL https://claude.ai/install.sh | bash
 
 COPY --chmod=0755 entrypoint.sh /usr/local/bin/entrypoint.sh
 
+# PreToolUse guard: denies Python writes with excess comment volume
+# (settings.json references it by this absolute path). Runs on the system python3.
+COPY --chmod=0755 hooks/min_comments.py /usr/local/bin/min-comments-hook
+
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
