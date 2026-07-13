@@ -14,10 +14,13 @@ forces a fresh `claude` download on every build.
 
 ## Mounts
 
-- `~/.claude` credentials, `settings.json` and global `CLAUDE.md` — shared with
-  the host (settings/CLAUDE.md read-only).
-- `~/.claude.json` — seeded read-only; the entrypoint copies it to a writable
-  in-container path, so session writes stay ephemeral and never touch the host.
+- `~/.claude` credentials and global `CLAUDE.md` — shared with the host
+  (`CLAUDE.md` read-only).
+- `~/.claude.json` and `~/.claude/settings.json` — seeded read-only; the
+  entrypoint copies each to a writable in-container path, so session writes stay
+  ephemeral and never touch the host. For settings it also merges in the hooks
+  block baked into the image (see [hooks.md](hooks.md)), so the guards are wired
+  even when the host settings omit them.
 - `/scratch`, the host docker socket, `/etc/pip.conf`, the pip cache, `~/.ssh`
   (ro), `~/.config/gh`, and `~/.gitconfig` (ro).
 - `/tmp` — persisted per container name under `/scratch/tmp/<name>`; the

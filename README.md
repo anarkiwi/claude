@@ -20,6 +20,6 @@ directive; run their tests with `cd hooks && pytest -n auto`.
 
 | Hook | Blocks |
 | --- | --- |
-| `min_comments.py` | Python docstrings over 3 lines, or consecutive comment lines |
+| `min_comments.py` | Python docstring descriptions over 3 lines (PEP 257, sections excluded), or consecutive comment lines |
 
 See [docs/hooks.md](docs/hooks.md).

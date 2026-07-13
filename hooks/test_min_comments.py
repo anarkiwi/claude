@@ -27,18 +27,37 @@ def denied(out):
     return bool(out) and json.loads(out)["hookSpecificOutput"]["permissionDecision"] == "deny"
 
 
+GOOGLE_SECTIONS = (
+    "def add(a, b):\n"
+    '    """Sum two numbers.\n\n'
+    "    Args:\n        a: first addend.\n        b: second addend.\n\n"
+    "    Returns:\n        The sum.\n\n"
+    "    Raises:\n        TypeError: if inputs are not numeric.\n"
+    '    """\n    return a + b\n'
+)
+
+NUMPY_SECTIONS = (
+    "def add(a, b):\n"
+    '    """Sum two numbers.\n\n'
+    "    Parameters\n    ----------\n    a : int\n        first.\n    b : int\n        second.\n\n"
+    "    Returns\n    -------\n    int\n        the sum.\n"
+    '    """\n    return a + b\n'
+)
+
 VERBOSE = [
-    '"""line one\nline two\nline three\nline four"""\nx = 1\n',
-    'def f():\n    """one\n    two\n    three\n    four"""\n    return 1\n',
-    'class C:\n    """a\n    b\n    c\n    d"""\n',
+    '"""Summary.\n\none\ntwo\nthree\nfour\n"""\nx = 1\n',
+    'def f():\n    """Summary.\n\n    one\n    two\n    three\n    four\n    """\n    return 1\n',
+    'class C:\n    """Summary.\n\n    one\n    two\n    three\n    four\n    """\n',
     "# first note\n# second note\nx = 1\n",
     "x = 1\n# a\n# b\n# c\ny = 2\n",
     "def f():\n    # step one\n    # step two\n    return 1\n",
 ]
 
 TERSE = [
-    'def f():\n    """one\n    two\n    three"""\n    return 1\n',
-    'def f():\n    """single line."""\n    return 1\n',
+    'def f():\n    """Summary.\n\n    one\n    two\n    three\n    """\n    return 1\n',
+    'def f():\n    """Single line."""\n    return 1\n',
+    GOOGLE_SECTIONS,
+    NUMPY_SECTIONS,
     "x = 1  # radius\n",
     "# lone note\nx = 1\n",
     "# note\n\n# separated note\nx = 1\n",
@@ -104,9 +123,31 @@ def test_unknown_tool_allows(monkeypatch, capsys):
     assert run({"tool_name": "Bash", "tool_input": {"command": "ls"}}, monkeypatch, capsys) == ""
 
 
-def test_boundary_three_line_docstring_allowed(monkeypatch, capsys):
-    content = 'def f():\n    """one\n    two\n    three"""\n    return 1\n'
+def test_boundary_three_description_lines_allowed(monkeypatch, capsys):
+    content = 'def f():\n    """Summary.\n\n    one\n    two\n    three\n    """\n    return 1\n'
     assert run(write("m.py", content), monkeypatch, capsys) == ""
+
+
+def test_four_description_lines_blocked(monkeypatch, capsys):
+    content = (
+        'def f():\n    """Summary.\n\n'
+        "    one\n    two\n    three\n    four\n"
+        '    """\n    return 1\n'
+    )
+    assert denied(run(write("m.py", content), monkeypatch, capsys))
+
+
+def test_long_sections_do_not_count(monkeypatch, capsys):
+    assert run(write("m.py", GOOGLE_SECTIONS), monkeypatch, capsys) == ""
+    assert run(write("m.py", NUMPY_SECTIONS), monkeypatch, capsys) == ""
+
+
+def test_long_description_before_section_blocked(monkeypatch, capsys):
+    content = (
+        'def add(a, b):\n    """Summary.\n\n    one\n    two\n    three\n    four\n\n'
+        '    Args:\n        a: x.\n    """\n    return a + b\n'
+    )
+    assert denied(run(write("m.py", content), monkeypatch, capsys))
 
 
 def test_blank_line_breaks_comment_run(monkeypatch, capsys):

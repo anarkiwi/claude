@@ -15,6 +15,20 @@ if [[ -f "${SEED}" ]]; then
     cp "${SEED}" "${DEST}"
 fi
 
+# Wire the PreToolUse guard hooks without depending on the host settings: seed
+# the writable settings.json from the host (or {} if absent) and merge in the
+# hooks block baked into the image, deduping so re-runs stay idempotent.
+SETTINGS_SEED="${HOME}/.claude/settings.json.seed"
+SETTINGS="${HOME}/.claude/settings.json"
+HOOK_SRC="/usr/local/share/claude-settings.json"
+BASE='{}'
+if [[ -f "${SETTINGS_SEED}" ]] && jq -e . "${SETTINGS_SEED}" >/dev/null 2>&1; then
+    BASE="$(cat "${SETTINGS_SEED}")"
+fi
+printf '%s' "${BASE}" | jq --slurpfile s "${HOOK_SRC}" \
+    '.hooks.PreToolUse = ((.hooks.PreToolUse // []) + ($s[0].hooks.PreToolUse // []) | unique_by(tojson))' \
+    > "${SETTINGS}"
+
 # /tmp is a persistent host mount; create a venv there once and activate it so
 # session state (and the venv) survives container restarts.
 VENV="/tmp/venv"

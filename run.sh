@@ -23,6 +23,13 @@ if [[ -f "${HOME}/.claude.json" ]]; then
     SEED_MOUNT=(-v "${HOME}/.claude.json:${HOME}/.claude.json.seed:ro")
 fi
 
+# Seed the host settings.json read-only; the entrypoint copies it to a writable
+# path and merges the image's hooks block in, so session writes stay ephemeral.
+SETTINGS_MOUNT=()
+if [[ -f "${HOME}/.claude/settings.json" ]]; then
+    SETTINGS_MOUNT=(-v "${HOME}/.claude/settings.json:${HOME}/.claude/settings.json.seed:ro")
+fi
+
 # Always rebuild so the image tracks the latest claude and host identity.
 docker build \
     --build-arg "USERNAME=$(id -un)" \
@@ -55,9 +62,9 @@ exec docker run --rm -it \
     -v /etc/pip.conf:/etc/pip.conf:ro \
     -v "${PIP_CACHE}:${HOME}/.cache/pip" \
     -v "${HOME}/.claude/.credentials.json:${HOME}/.claude/.credentials.json" \
-    -v "${HOME}/.claude/settings.json:${HOME}/.claude/settings.json:ro" \
     -v "${HOME}/.claude/CLAUDE.md:${HOME}/.claude/CLAUDE.md:ro" \
     "${SEED_MOUNT[@]}" \
+    "${SETTINGS_MOUNT[@]}" \
     -v "${HOME}/.ssh:${HOME}/.ssh:ro" \
     -v "${HOME}/.config/gh:${HOME}/.config/gh" \
     -v "${HOME}/.gitconfig:${HOME}/.gitconfig:ro" \

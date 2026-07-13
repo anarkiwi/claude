@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """PreToolUse guard denying Python writes with excess comment volume.
-Blocks docstrings over MAX_DOCSTRING_LINES lines and consecutive comments."""
+Caps docstring descriptions per PEP 257 and bans consecutive comments."""
 
 import ast
 import io
@@ -9,16 +9,54 @@ import sys
 import tokenize
 
 PY_SUFFIXES = frozenset({"py", "pyi"})
-MAX_DOCSTRING_LINES = 3
+MAX_DESCRIPTION_LINES = 3
 
 DIRECTIVE = (
-    "Blocked: this Python write carries excess comment volume. Per directive, "
-    f"minimize narrative comments: no docstring over {MAX_DOCSTRING_LINES} lines "
-    "and no consecutive full-line comments. State facts compactly, then merge or "
-    "delete the excess."
+    "Blocked: this Python write carries excess comment volume. Per directive and "
+    "PEP 257, keep each docstring to a one-line summary plus at most "
+    f"{MAX_DESCRIPTION_LINES} lines of description (Args/Returns/Raises and other "
+    "sections excluded), and use no consecutive full-line comments. State facts "
+    "compactly, then merge or delete the excess."
 )
 
 _DEF_NODES = (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+
+# Google/NumPy docstring section headers; text from the first header on is excluded.
+_DOC_SECTIONS = frozenset(
+    {
+        "args",
+        "arguments",
+        "parameters",
+        "params",
+        "param",
+        "keyword args",
+        "keyword arguments",
+        "other parameters",
+        "returns",
+        "return",
+        "yields",
+        "yield",
+        "raises",
+        "raise",
+        "except",
+        "exceptions",
+        "warns",
+        "attributes",
+        "attribute",
+        "methods",
+        "receives",
+        "note",
+        "notes",
+        "example",
+        "examples",
+        "references",
+        "reference",
+        "see also",
+        "todo",
+        "warning",
+        "warnings",
+    }
+)
 
 
 def added_texts(tool_name, tool_input):
@@ -43,18 +81,43 @@ def is_python(path):
     return len(parts) == 2 and parts[1].lower() in PY_SUFFIXES
 
 
+def _is_section_header(line, next_line):
+    text = line.strip()
+    if not text:
+        return False
+    if text.endswith(":") and text[:-1].strip().lower() in _DOC_SECTIONS:
+        return True
+    underline = next_line.strip()
+    return text.lower() in _DOC_SECTIONS and bool(underline) and set(underline) == {"-"}
+
+
+def _description_lines(doc):
+    """Count non-blank docstring lines before the first structured section."""
+    lines = doc.splitlines()
+    end = len(lines)
+    for i, line in enumerate(lines):
+        following = lines[i + 1] if i + 1 < len(lines) else ""
+        if _is_section_header(line, following):
+            end = i
+            break
+    return sum(1 for line in lines[:end] if line.strip())
+
+
 def _docstring_violations(text):
     try:
         tree = ast.parse(text)
     except (SyntaxError, ValueError):
         return
     for node in ast.walk(tree):
-        if not isinstance(node, _DEF_NODES) or ast.get_docstring(node) is None:
+        doc = ast.get_docstring(node) if isinstance(node, _DEF_NODES) else None
+        if doc is None:
             continue
-        literal = node.body[0].value
-        span = literal.end_lineno - literal.lineno + 1
-        if span > MAX_DOCSTRING_LINES:
-            yield literal.lineno, f"docstring spans {span} lines (limit {MAX_DOCSTRING_LINES})"
+        body = _description_lines(doc) - 1
+        if body > MAX_DESCRIPTION_LINES:
+            yield node.body[0].value.lineno, (
+                f"docstring description is {body} lines "
+                f"(PEP 257 limit {MAX_DESCRIPTION_LINES}, sections excluded)"
+            )
 
 
 def _standalone_comment_lines(text):

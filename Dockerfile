@@ -83,4 +83,8 @@ COPY --chmod=0755 entrypoint.sh /usr/local/bin/entrypoint.sh
 # (settings.json references it by this absolute path). Runs on the system python3.
 COPY --chmod=0755 hooks/min_comments.py /usr/local/bin/min-comments-hook
 
+# Canonical shared settings; the entrypoint merges its hooks block into the
+# writable in-container settings so the guard is wired without host changes.
+COPY settings.json /usr/local/share/claude-settings.json
+
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
