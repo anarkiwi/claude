@@ -54,6 +54,14 @@ fi
 CONTAINER_TMP="/scratch/tmp/${NAME}"
 mkdir -p "${CONTAINER_TMP}"
 
+# Auto-mount any host paths matching these globs read-write to the same location
+# inside the container, so tool config/state (e.g. ~/.ansible*) is shared.
+AUTO_MOUNT_PATTERNS=("${HOME}/.ansible"*)
+AUTO_MOUNTS=()
+for path in "${AUTO_MOUNT_PATTERNS[@]}"; do
+    [[ -e "${path}" ]] && AUTO_MOUNTS+=(-v "${path}:${path}")
+done
+
 exec docker run --rm -it \
     --name "${NAME}" \
     -v "${CONTAINER_TMP}:/tmp" \
@@ -65,6 +73,7 @@ exec docker run --rm -it \
     -v "${HOME}/.claude/CLAUDE.md:${HOME}/.claude/CLAUDE.md:ro" \
     "${SEED_MOUNT[@]}" \
     "${SETTINGS_MOUNT[@]}" \
+    "${AUTO_MOUNTS[@]}" \
     -v "${HOME}/.ssh:${HOME}/.ssh:ro" \
     -v "${HOME}/.config/gh:${HOME}/.config/gh" \
     -v "${HOME}/.gitconfig:${HOME}/.gitconfig:ro" \
