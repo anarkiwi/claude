@@ -37,7 +37,7 @@ docker build \
     --build-arg "GID=$(id -g)" \
     --build-arg "DOCKER_GID=${DOCKER_GID}" \
     --build-arg "CACHEBUST=$(date +%s)" \
-    -t "${IMAGE}" "$(dirname "$0")"
+    -t "${IMAGE}" -f "$(dirname "$0")"/Dockerfile "$(dirname "$0")"
 
 # The container and its Remote Control session share one name: <host>-<dir>.
 NAME="$(hostname -s)-$(basename "$(pwd)")"
