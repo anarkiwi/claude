@@ -8,6 +8,12 @@
 # and is discarded when it exits.
 set -euo pipefail
 
+# Resolve this script's own directory so the build always targets the claude
+# Dockerfile, regardless of the caller's working directory. dirname "$0" alone
+# yields "." when $0 has no directory component, which would build whatever
+# Dockerfile happens to sit in the caller's cwd.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 IMAGE="${IMAGE:-claude-code:local}"
 DOCKER_GID="$(getent group docker | cut -d: -f3)"
 PIP_CACHE="${PIP_CACHE:-$HOME/.cache/pip}"
@@ -37,7 +43,7 @@ docker build \
     --build-arg "GID=$(id -g)" \
     --build-arg "DOCKER_GID=${DOCKER_GID}" \
     --build-arg "CACHEBUST=$(date +%s)" \
-    -t "${IMAGE}" -f "$(dirname "$0")"/Dockerfile "$(dirname "$0")"
+    -t "${IMAGE}" -f "${SCRIPT_DIR}/Dockerfile" "${SCRIPT_DIR}"
 
 # The container and its Remote Control session share one name: <host>-<dir>.
 NAME="$(hostname -s)-$(basename "$(pwd)")"
@@ -62,6 +68,12 @@ for path in "${AUTO_MOUNT_PATTERNS[@]}"; do
     [[ -e "${path}" ]] && AUTO_MOUNTS+=(-v "${path}:${path}")
 done
 
+# known_hosts must be writable so the container can record host keys it hasn't
+# seen; ~/.ssh itself stays read-only to protect the private keys. Ensure the
+# file exists so docker bind-mounts a file (not a fresh directory) over the
+# read-only parent.
+touch "${HOME}/.ssh/known_hosts"
+
 exec docker run --rm -it \
     --name "${NAME}" \
     -v "${CONTAINER_TMP}:/tmp" \
@@ -75,6 +87,7 @@ exec docker run --rm -it \
     "${SETTINGS_MOUNT[@]}" \
     "${AUTO_MOUNTS[@]}" \
     -v "${HOME}/.ssh:${HOME}/.ssh:ro" \
+    -v "${HOME}/.ssh/known_hosts:${HOME}/.ssh/known_hosts:rw" \
     -v "${HOME}/.config/gh:${HOME}/.config/gh" \
     -v "${HOME}/.gitconfig:${HOME}/.gitconfig:ro" \
     -w "$(pwd)" \

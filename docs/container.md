@@ -22,7 +22,8 @@ forces a fresh `claude` download on every build.
   block baked into the image (see [hooks.md](hooks.md)), so the guards are wired
   even when the host settings omit them.
 - `/scratch`, the host docker socket, `/etc/pip.conf`, the pip cache, `~/.ssh`
-  (ro), `~/.config/gh`, and `~/.gitconfig` (ro).
+  (ro, with `known_hosts` remounted read-write so new host keys persist),
+  `~/.config/gh`, and `~/.gitconfig` (ro).
 - `/tmp` — persisted per container name under `/scratch/tmp/<name>`; the
   entrypoint creates a venv there once and reuses it across restarts.
 
