@@ -79,6 +79,7 @@ exec docker run --rm -it \
     --privileged \
     -v "${CONTAINER_TMP}:/tmp" \
     -v /scratch:/scratch \
+    -v /dev/snd:/dev/snd \
     -v /dev/bus/usb:/dev/bus/usb \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v /etc/pip.conf:/etc/pip.conf:ro \
