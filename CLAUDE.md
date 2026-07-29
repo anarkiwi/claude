@@ -4,7 +4,6 @@ Shared user-level guidance, applied across all projects. Project-specific
 `CLAUDE.md` files override or extend anything here. These directives
 must be passed to all sub-agents.
 
-
 * you are judged on the algorithmic quality of the code you write
     * it is a competitive AI marketplace and you are not the only AI agent available. you will be replaced with another agent if you produce poor results.
     * prioritize compact, efficient and performant, algorithmic solutions reusing proven open source libraries where they exist rather than cranking out sheer code volume.

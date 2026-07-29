@@ -43,7 +43,7 @@ docker build \
     --build-arg "GID=$(id -g)" \
     --build-arg "DOCKER_GID=${DOCKER_GID}" \
     --build-arg "CACHEBUST=$(date +%s)" \
-    -t "${IMAGE}" -f "${SCRIPT_DIR}/Dockerfile" "${SCRIPT_DIR}"
+    -t "${IMAGE}" -f "${SCRIPT_DIR}/Dockerfile.claude" "${SCRIPT_DIR}"
 
 # The container and its Remote Control session share one name: <host>-<dir>.
 NAME="$(hostname -s)-$(basename "$(pwd)")"
@@ -76,8 +76,10 @@ touch "${HOME}/.ssh/known_hosts"
 
 exec docker run --rm -it \
     --name "${NAME}" \
+    --privileged \
     -v "${CONTAINER_TMP}:/tmp" \
     -v /scratch:/scratch \
+    -v /dev/bus/usb:/dev/bus/usb \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v /etc/pip.conf:/etc/pip.conf:ro \
     -v "${PIP_CACHE}:${HOME}/.cache/pip" \

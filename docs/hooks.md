@@ -8,9 +8,9 @@ Wiring:
 
 - `settings.json` registers the guard under `hooks.PreToolUse` with a
   `Write|Edit|MultiEdit|NotebookEdit` matcher, referencing it by absolute path.
-- The `Dockerfile` `COPY`s each guard to `/usr/local/bin/` so that path exists
+- The `Dockerfile.claude` `COPY`s each guard to `/usr/local/bin/` so that path exists
   in the container. Guards run on the system `python3` with no third-party deps.
-- The `Dockerfile` also bakes `settings.json` into the image; `entrypoint.sh`
+- The `Dockerfile.claude` also bakes `settings.json` into the image; `entrypoint.sh`
   seeds the writable in-container `~/.claude/settings.json` from the host and
   merges this `hooks.PreToolUse` block in (deduped, idempotent). The guard is
   therefore self-wiring — it runs even when the host settings omit it.

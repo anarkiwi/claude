@@ -15,7 +15,7 @@ is discarded on exit. See [docs/container.md](docs/container.md).
 ## Hooks
 
 `hooks/` holds PreToolUse guards wired into `settings.json` and installed into
-the image by the `Dockerfile`. Each denies writes that violate a coding
+the image by the `Dockerfile.claude`. Each denies writes that violate a coding
 directive; run their tests with `cd hooks && pytest -n auto`.
 
 | Hook | Blocks |
