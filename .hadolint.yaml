@@ -2,6 +2,13 @@
 # Intentionally retained apt lists: the entrypoint apt-get installs
 # device-support packages at container start (no apt-get update available
 # there without them).
+# USER is a build-arg-driven name (host-UID-matched, see Dockerfile.claude),
+# which hadolint can't statically verify is numeric, hence DL3066. A literal
+# numeric UID isn't a real fix: an explicit numeric GID alongside it drops
+# supplementary group membership (verified -- the docker group vanishes from
+# `id -Gn`), and UID alone still trips this same rule on the hadolint version
+# pinned by CI (2.15.0) despite passing on 2.15.1.
 ignored:
   - DL3008
   - DL3009
+  - DL3066
