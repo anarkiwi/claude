@@ -8,7 +8,7 @@
 # exit. Includes the docker CLI (no daemon) for driving the host socket.
 FROM ubuntu:24.04
 
-ARG USERNAME=josh
+ARG CONTAINER_USER=josh
 ARG UID=1000
 ARG GID=1000
 # Must match the host's docker group so the mounted socket is writable.
@@ -24,8 +24,7 @@ RUN sed -i 's|https://|http://|g' \
     apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates curl gnupg git openssh-client \
         ripgrep less jq python3 python3-pip python3-venv python3-dev \
-        build-essential sudo \
-    && rm -rf /var/lib/apt/lists/*
+        build-essential sudo
 
 # Docker CLI only (talks to the bind-mounted host daemon socket).
 # Stays on https: download.docker.com (CloudFront) 301-redirects http to https,
@@ -37,8 +36,7 @@ RUN install -m 0755 -d /etc/apt/keyrings \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu noble stable" \
         > /etc/apt/sources.list.d/docker.list \
     && apt-get update \
-    && apt-get install -y --no-install-recommends docker-ce-cli docker-buildx-plugin docker-compose-plugin \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get install -y --no-install-recommends docker-ce-cli docker-buildx-plugin docker-compose-plugin
 
 # GitHub CLI (uses the bind-mounted ~/.config/gh credentials).
 RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
@@ -47,33 +45,37 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] http://cli.github.com/packages stable main" \
         > /etc/apt/sources.list.d/github-cli.list \
     && apt-get update \
-    && apt-get install -y --no-install-recommends gh \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get install -y --no-install-recommends gh
 
 # Create user/group matching the host. Reuse the GID if it already exists.
 # Ubuntu 24.04 ships a default "ubuntu" user at UID/GID 1000; remove it first
 # so it doesn't collide with the host-matched UID/GID below.
 RUN userdel -r ubuntu 2>/dev/null || true; \
-    if ! getent group "${GID}" >/dev/null; then groupadd -g "${GID}" "${USERNAME}"; fi \
-    && useradd -l -m -u "${UID}" -g "${GID}" -s /bin/bash "${USERNAME}" \
-    && echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/"${USERNAME}" \
-    && chmod 0440 /etc/sudoers.d/"${USERNAME}" \
-    && install -d -o "${UID}" -g "${GID}" -m 0700 "/home/${USERNAME}/.claude"
+    if ! getent group "${GID}" >/dev/null; then groupadd -g "${GID}" "${CONTAINER_USER}"; fi \
+    && useradd -l -m -u "${UID}" -g "${GID}" -s /bin/bash "${CONTAINER_USER}" \
+    && echo "${CONTAINER_USER} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/"${CONTAINER_USER}" \
+    && chmod 0440 /etc/sudoers.d/"${CONTAINER_USER}" \
+    && install -d -o "${UID}" -g "${GID}" -m 0700 "/home/${CONTAINER_USER}/.claude"
 
 # docker group with the host's GID, so the user can use the mounted socket.
 RUN if getent group "${DOCKER_GID}" >/dev/null; then \
-        usermod -aG "$(getent group "${DOCKER_GID}" | cut -d: -f1)" "${USERNAME}"; \
+        usermod -aG "$(getent group "${DOCKER_GID}" | cut -d: -f1)" "${CONTAINER_USER}"; \
     else \
-        groupadd -g "${DOCKER_GID}" docker && usermod -aG docker "${USERNAME}"; \
+        groupadd -g "${DOCKER_GID}" docker && usermod -aG docker "${CONTAINER_USER}"; \
     fi
 
-USER ${USERNAME}
+# Numeric UID, not the username: resolvable on any host regardless of its
+# /etc/passwd contents (hadolint DL3066). Deliberately omits an explicit
+# :GID -- that suppresses runc's supplementary-group lookup and drops the
+# docker group added above, breaking access to the mounted socket.
+USER ${UID}
 WORKDIR /scratch/anarkiwi/infra/claude
 
-ENV PATH="/home/${USERNAME}/.local/bin:${PATH}"
+ENV PATH="/home/${CONTAINER_USER}/.local/bin:${PATH}"
 
 # Native claude install lands in ~/.local (outside the mounted ~/.claude).
-# CACHEBUST forces a fresh download each run when changed (set by run.sh).
+# CACHEBUST is the latest claude version (set by run.sh): the download below
+# only reruns, instead of hitting Docker's layer cache, when it changes.
 ARG CACHEBUST=0
 RUN curl -fsSL https://claude.ai/install.sh | bash
 

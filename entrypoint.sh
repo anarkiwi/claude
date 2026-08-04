@@ -38,4 +38,24 @@ fi
 # shellcheck disable=SC1091
 source "${VENV}/bin/activate"
 
+# Install userspace tooling for whichever host devices run.sh bind-mounted in
+# (see hosts/), then open up their permissions so using them doesn't need
+# sudo. The apt lists cached at build time (Dockerfile.claude keeps them)
+# make this apt-get install work without a prior apt-get update.
+declare -A DEVICE_PACKAGES=(
+    [/dev/snd]=alsa-utils
+    [/dev/video0]=v4l-utils
+    [/dev/bus/usb]=usbutils
+)
+DEVICE_PKGS=()
+for dev in "${!DEVICE_PACKAGES[@]}"; do
+    [[ -e "${dev}" ]] && DEVICE_PKGS+=("${DEVICE_PACKAGES[${dev}]}")
+done
+if [[ ${#DEVICE_PKGS[@]} -gt 0 ]]; then
+    sudo apt-get install -y --no-install-recommends "${DEVICE_PKGS[@]}"
+fi
+for dev in /dev/snd /dev/video0 /dev/ttyACM0 /dev/bus/usb; do
+    [[ -e "${dev}" ]] && sudo chmod -R a+rw "${dev}"
+done
+
 exec claude "$@"

@@ -36,17 +36,27 @@ if [[ -f "${HOME}/.claude/settings.json" ]]; then
     SETTINGS_MOUNT=(-v "${HOME}/.claude/settings.json:${HOME}/.claude/settings.json.seed:ro")
 fi
 
+# CACHEBUST is the latest available claude version, not a timestamp: the
+# install layer (a ~300MB download, minutes on a throttled link) only
+# reruns when a new release actually ships, since Docker reuses its cached
+# layer for an unchanged build-arg value. Falls back to a once-a-day value
+# if the version check itself fails, so a transient network blip costs at
+# most one rebuild rather than none.
+CACHEBUST="$(curl -fsSL --max-time 5 https://downloads.claude.ai/claude-code-releases/latest 2>/dev/null || date +%Y%m%d)"
+
 # Always rebuild so the image tracks the latest claude and host identity.
 docker build \
-    --build-arg "USERNAME=$(id -un)" \
+    --build-arg "CONTAINER_USER=$(id -un)" \
     --build-arg "UID=$(id -u)" \
     --build-arg "GID=$(id -g)" \
     --build-arg "DOCKER_GID=${DOCKER_GID}" \
-    --build-arg "CACHEBUST=$(date +%s)" \
+    --build-arg "CACHEBUST=${CACHEBUST}" \
     -t "${IMAGE}" -f "${SCRIPT_DIR}/Dockerfile.claude" "${SCRIPT_DIR}"
 
+HOST="$(hostname -s)"
+
 # The container and its Remote Control session share one name: <host>-<dir>.
-NAME="$(hostname -s)-$(basename "$(pwd)")"
+NAME="${HOST}-$(basename "$(pwd)")"
 
 # Default to an interactive Remote Control session under NAME when no explicit
 # claude args are given; passing any args overrides this default.
@@ -74,16 +84,52 @@ done
 # read-only parent.
 touch "${HOME}/.ssh/known_hosts"
 
+# Mount the host's apt proxy/cache config read-only, if present, so runtime
+# apt-get installs (see entrypoint.sh) go through the same proxy as the host
+# -- mirrors the pip.conf mount below for pip.
+APT_PROXY_MOUNTS=()
+while IFS= read -r -d '' path; do
+    APT_PROXY_MOUNTS+=(-v "${path}:${path}:ro")
+done < <(find /etc/apt/apt.conf.d -maxdepth 1 -iname '*proxy*' -print0 2>/dev/null)
+if [[ -f /etc/apt/apt.conf ]]; then
+    APT_PROXY_MOUNTS+=(-v /etc/apt/apt.conf:/etc/apt/apt.conf:ro)
+fi
+
+# Resource caps, overridable per host (see below): --pids-limit guards
+# against runaway forks (relevant to the --init/zombie-reaping note further
+# down); MEMORY_LIMIT defaults to all host RAM minus 1G of headroom for the
+# host itself.
+PIDS_LIMIT="${PIDS_LIMIT:-2048}"
+HOST_MEM_BYTES="$(free -b | awk '/^Mem:/{print $2}')"
+MEMORY_LIMIT="${MEMORY_LIMIT:-$(( (HOST_MEM_BYTES - 1073741824) / 1048576 ))m}"
+
+# Host-specific docker flags (e.g. --privileged, device mounts) live in
+# hosts/<hostname>.sh and are opt-in per host; the default config mounts no
+# devices. The same file can override PIDS_LIMIT/MEMORY_LIMIT above, or push
+# more entries onto HOST_DOCKER_ARGS. See hosts/vek-x.sh for an example.
+HOST_DOCKER_ARGS=()
+HOST_CONFIG="${SCRIPT_DIR}/hosts/${HOST}.sh"
+if [[ -f "${HOST_CONFIG}" ]]; then
+    # shellcheck disable=SC1090
+    source "${HOST_CONFIG}"
+fi
+
+# --init runs Docker's built-in tini as the real PID 1 (entrypoint execs
+# claude as its child, not PID 1 itself), so orphaned grandchildren -- e.g.
+# workers left behind when claude kills a python multiprocessing pool -- get
+# reaped instead of turning into zombies.
 exec docker run --rm -it \
     --name "${NAME}" \
-    --privileged \
+    --init \
+    --pids-limit "${PIDS_LIMIT}" \
+    --memory "${MEMORY_LIMIT}" \
+    "${HOST_DOCKER_ARGS[@]}" \
     -v "${CONTAINER_TMP}:/tmp" \
     -v /scratch:/scratch \
-    -v /dev/snd:/dev/snd \
-    -v /dev/bus/usb:/dev/bus/usb \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v /etc/pip.conf:/etc/pip.conf:ro \
     -v "${PIP_CACHE}:${HOME}/.cache/pip" \
+    "${APT_PROXY_MOUNTS[@]}" \
     -v "${HOME}/.claude/.credentials.json:${HOME}/.claude/.credentials.json" \
     -v "${HOME}/.claude/CLAUDE.md:${HOME}/.claude/CLAUDE.md:ro" \
     "${SEED_MOUNT[@]}" \
