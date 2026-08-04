@@ -1,3 +1,7 @@
 # Intentionally unpinned apt versions: the image tracks latest by design.
+# Intentionally retained apt lists: the entrypoint apt-get installs
+# device-support packages at container start (no apt-get update available
+# there without them).
 ignored:
   - DL3008
+  - DL3009

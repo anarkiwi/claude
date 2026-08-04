@@ -10,7 +10,8 @@ Containerized, host-identity Claude Code and its PreToolUse guard hooks.
 Runs the native `claude` binary as a UID/GID-matched non-root user, with the
 host's docker socket, `/scratch`, `~/.ssh`, `~/.config/gh` and `~/.claude`
 credentials/settings bind-mounted in. Session state stays in the container and
-is discarded on exit. See [docs/container.md](docs/container.md).
+is discarded on exit. Host-specific extras (device mounts, `--privileged`) are
+opt-in via `hosts/<hostname>.sh`. See [docs/container.md](docs/container.md).
 
 ## Hooks
 
