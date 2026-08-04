@@ -9,11 +9,12 @@ correct ownership and the client recognises the existing authenticated install.
 The image is built with `CONTAINER_USER`/`UID`/`GID` from the invoking host
 user and `DOCKER_GID` from the host `docker` group, creating a matching
 non-root user with passwordless sudo and membership of the docker group.
-`USER` is set to the numeric `UID` alone (not `UID:GID`, and not the
-username) — that keeps hadolint happy (DL3066) while still resolving
-supplementary groups (like `docker`) the way a named `USER` would; adding an
-explicit `:GID` suppresses that lookup and silently drops them. The native
-`claude` binary installs into `~/.local` (outside the mounted `~/.claude`).
+`USER` is set to `CONTAINER_USER` (the name), not a numeric UID: a numeric
+value stops runc resolving supplementary groups (the `docker` group
+disappears from `id -Gn`), and hadolint flags it either way (DL3066, ignored
+in `.hadolint.yaml`) since it can't statically verify a build-arg value is
+numeric. The native `claude` binary installs into `~/.local` (outside the
+mounted `~/.claude`).
 `CACHEBUST` is the latest available `claude` version (resolved by `run.sh`),
 not a timestamp, so the ~300MB install layer only reruns — and only pays for
 a fresh download — when a new release actually ships; an unchanged version

@@ -64,11 +64,7 @@ RUN if getent group "${DOCKER_GID}" >/dev/null; then \
         groupadd -g "${DOCKER_GID}" docker && usermod -aG docker "${CONTAINER_USER}"; \
     fi
 
-# Numeric UID, not the username: resolvable on any host regardless of its
-# /etc/passwd contents (hadolint DL3066). Deliberately omits an explicit
-# :GID -- that suppresses runc's supplementary-group lookup and drops the
-# docker group added above, breaking access to the mounted socket.
-USER ${UID}
+USER ${CONTAINER_USER}
 WORKDIR /scratch/anarkiwi/infra/claude
 
 ENV PATH="/home/${CONTAINER_USER}/.local/bin:${PATH}"
