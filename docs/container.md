@@ -38,8 +38,13 @@ hits Docker's normal build cache.
 
 ## Mounts
 
-- `~/.claude` credentials and global `CLAUDE.md` — shared with the host
-  (`CLAUDE.md` read-only).
+- `~/.claude/.credentials.json` — from `SSH_HOME`, the active identity's own
+  home, **not** the invoking user's. Each identity on each host keeps its own
+  login; see [Credentials](#credentials) for why sharing one breaks.
+- global `CLAUDE.md` (ro) — from the invoking user's `$HOME`, since it is
+  shared guidance rather than identity state. Skipped when absent or a
+  dangling symlink, so docker can't materialise a stray directory in its
+  place.
 - `~/.claude.json` and `~/.claude/settings.json` — seeded read-only; the
   entrypoint copies each to a writable in-container path, so session writes stay
   ephemeral and never touch the host. For settings it also merges in the hooks
@@ -57,6 +62,32 @@ hits Docker's normal build cache.
 Session state (conversations, history, tasks) lives only in the container and
 is discarded on exit. With no args, `run.sh` starts a `--remote-control`
 session named `<host>-<dir>`.
+
+## Credentials
+
+Claude Code persists its OAuth login to `~/.claude/.credentials.json`. That
+file belongs to the **identity**, so it is mounted from `SSH_HOME` and every
+identity on every host keeps its own.
+
+Sharing one credential across containers is not merely untidy — it destroys
+it. The OAuth refresh token rotates on refresh, so two containers using the
+same file invalidate each other in turn until the client gives up and clears
+it. This is not hypothetical: it wiped every stored login on the fleet on
+2026-08-06, when the identity switch landed while this mount still pointed at
+the invoking user's `$HOME`. The tell at the time was having to hand-widen
+josh's credentials (`chgrp sw` / `chmod g+r`) so containers running as a
+different UID could read them — a correctly-scoped credential never needs
+that.
+
+`run.sh` pre-creates the file as the identity user before `docker run` sees
+it. This matters: docker silently materialises a **missing** bind-mount source
+as a *root-owned directory*, which the container can then never log in to.
+The optional mounts (`.claude.json`, `settings.json`, `CLAUDE.md`) avoid this
+by simply not mounting when absent; the credentials mount can't, since the
+container needs somewhere to persist a fresh login, so it creates an empty
+`0600` file instead. It also repairs the directory artifact if an earlier run
+left one — via `rmdir`, which only succeeds when empty, so a real credentials
+file is never at risk.
 
 ## Host-specific config
 

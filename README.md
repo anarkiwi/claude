@@ -8,11 +8,14 @@ Containerized Claude Code and its PreToolUse guard hooks.
     ./run.sh <claude args>   # override the default session
 
 Runs the native `claude` binary as a non-root user under the shared `claude`
-identity's UID/GID and `~/.ssh` (host-overridable per repo), with the host's
-docker socket, `/scratch`, `~/.config/gh` and `~/.claude` credentials/settings
-also bind-mounted in. Session state stays in the container and is discarded on
-exit. Host-specific extras (device mounts, `--privileged`, identity overrides)
-are opt-in via `hosts/<hostname>.sh`. See [docs/container.md](docs/container.md).
+identity's UID/GID, `~/.ssh` and Claude Code credentials (host-overridable per
+repo), with the host's docker socket, `/scratch`, `~/.config/gh` and
+`~/.claude` settings also bind-mounted in. Each identity on each host keeps
+its **own** login — sharing one across containers invalidates it, see
+[docs/container.md](docs/container.md#credentials). Session state stays in the
+container and is discarded on exit. Host-specific extras (device mounts,
+`--privileged`, identity overrides) are opt-in via `hosts/<hostname>.sh`.
+See [docs/container.md](docs/container.md).
 
 ## Hooks
 

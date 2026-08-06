@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
 # Build (if needed) and run Claude Code interactively in a container. The
-# container runs as a shared "claude" identity (UID/GID and ~/.ssh,
-# host-overridable per repo; see hosts/) rather than the invoking host user,
-# with the host's docker socket, scratch share and pip config/caches also
-# bind-mounted in. The ~/.claude credentials, settings and global CLAUDE.md
-# are shared with the host, and ~/.claude.json is seeded read-only (copied
-# to a writable path by the entrypoint) so the client recognises the
+# container runs as a shared "claude" identity (UID/GID, ~/.ssh and its
+# Claude Code credentials, host-overridable per repo; see hosts/) rather than
+# the invoking host user, with the host's docker socket, scratch share and
+# pip config/caches also bind-mounted in.
+#
+# The OAuth credentials come from the *identity's* home (SSH_HOME), so each
+# identity on each host keeps its own login -- see the CREDS block below for
+# why sharing one is actively harmful. Settings and the global CLAUDE.md are
+# still shared with the invoking user, and ~/.claude.json is seeded read-only
+# (copied to a writable path by the entrypoint) so the client recognises the
 # existing install; session state (conversations, history, tasks) lives in
 # the container and is discarded when it exits.
 set -euo pipefail
@@ -129,8 +133,47 @@ done
 # seen; ~/.ssh itself stays read-only to protect the private keys. Ensure the
 # file exists so docker bind-mounts a file (not a fresh directory) over the
 # read-only parent.
-SSH_OWNER=$(stat -c '%U' ${SSH_HOME})
+SSH_OWNER="$(stat -c '%U' "${SSH_HOME}")"
 sudo -u "${SSH_OWNER}" touch "${SSH_HOME}/.ssh/known_hosts"
+
+# Claude Code persists its OAuth login to ~/.claude/.credentials.json. That
+# file belongs to the *identity* (SSH_HOME), not the invoking host user, and
+# every identity on every host keeps its own. Sharing one across containers
+# is not merely untidy: the OAuth refresh token ROTATES on refresh, so two
+# containers using the same credential invalidate each other until the client
+# gives up and clears the file. That is how every stored login on the fleet
+# was lost (2026-08-06) -- the identity switch landed while this mount still
+# pointed at the invoking user's $HOME, so all six containers shared one
+# credential and the host user had to hand-widen it (chgrp sw / chmod g+r)
+# just to let the container read a file it could not legitimately own.
+#
+# The source must exist, as a file owned by the identity, BEFORE docker sees
+# it: docker silently materialises a missing bind-mount source as a
+# root-owned DIRECTORY, which the container can then never log in to. Same
+# reasoning as the known_hosts touch above and the -f guards on the seed
+# mounts further up.
+CREDS="${SSH_HOME}/.claude/.credentials.json"
+# Clean up exactly that failure mode if an earlier run left one behind.
+# rmdir only succeeds on an empty directory, so a real credentials file (or a
+# directory with anything in it) is never at risk here.
+if [[ -d "${CREDS}" ]]; then
+    sudo rmdir "${CREDS}" 2>/dev/null || {
+        echo "!! ${CREDS} is a non-empty directory -- inspect it by hand" >&2
+        exit 1
+    }
+fi
+if [[ ! -f "${CREDS}" ]]; then
+    sudo -u "${SSH_OWNER}" install -d -m 0700 "$(dirname "${CREDS}")"
+    sudo -u "${SSH_OWNER}" install -m 0600 /dev/null "${CREDS}"
+fi
+
+# The global CLAUDE.md is shared, non-secret guidance rather than identity
+# state, so it still comes from the invoking user's home. Guarded like the
+# seed mounts: an absent source would become a stray root-owned directory.
+CLAUDE_MD_MOUNT=()
+if [[ -e "${HOME}/.claude/CLAUDE.md" ]]; then
+    CLAUDE_MD_MOUNT=(-v "${HOME}/.claude/CLAUDE.md:${HOME}/.claude/CLAUDE.md:ro")
+fi
 
 # Mount the host's apt proxy/cache config read-only, if present, so runtime
 # apt-get installs (see entrypoint.sh) go through the same proxy as the host
@@ -158,8 +201,8 @@ exec docker run --rm -it \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v /etc/pip.conf:/etc/pip.conf:ro \
     "${APT_PROXY_MOUNTS[@]}" \
-    -v "${HOME}/.claude/.credentials.json:${HOME}/.claude/.credentials.json" \
-    -v "${HOME}/.claude/CLAUDE.md:${HOME}/.claude/CLAUDE.md:ro" \
+    -v "${CREDS}:${HOME}/.claude/.credentials.json" \
+    "${CLAUDE_MD_MOUNT[@]}" \
     "${SEED_MOUNT[@]}" \
     "${SETTINGS_MOUNT[@]}" \
     "${AUTO_MOUNTS[@]}" \
