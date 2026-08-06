@@ -1,11 +1,15 @@
 # Claude Code interactive container.
-# Runs the native claude binary as a non-root user whose UID/GID match the
-# host, so bind-mounted ~/.ssh and /scratch keep correct ownership. The host's
-# ~/.claude credentials, settings and global CLAUDE.md are bind-mounted in, and
-# ~/.claude.json is seeded (copied, not mounted) by the entrypoint so the client
-# recognises the existing authenticated install; all session state
-# (conversations, history, tasks) stays in the container and is discarded on
-# exit. Includes the docker CLI (no daemon) for driving the host socket.
+# Runs the native claude binary as a non-root user whose UID/GID/name (and
+# home directory contents, e.g. ~/.ssh) are set by run.sh -- normally the
+# shared "claude" identity, host-overridable per repo -- while the home
+# directory *path* stays at the invoking host user's $HOME (see HOME_DIR
+# below), so bind-mounted ~/.claude, ~/.ssh and /scratch keep correct
+# ownership. The host's ~/.claude credentials, settings and global CLAUDE.md
+# are bind-mounted in, and ~/.claude.json is seeded (copied, not mounted) by
+# the entrypoint so the client recognises the existing authenticated
+# install; all session state (conversations, history, tasks) stays in the
+# container and is discarded on exit. Includes the docker CLI (no daemon)
+# for driving the host socket.
 FROM ubuntu:24.04
 
 ARG CONTAINER_USER=josh
@@ -13,6 +17,11 @@ ARG UID=1000
 ARG GID=1000
 # Must match the host's docker group so the mounted socket is writable.
 ARG DOCKER_GID=998
+# Home directory path: kept at the invoking host user's $HOME (not
+# /home/${CONTAINER_USER}) so host-side bind mounts under $HOME (~/.ssh,
+# ~/.claude, ~/.gitconfig, ...) still land in the right place even though
+# CONTAINER_USER/UID/GID may name a different identity (e.g. "claude"/"sw").
+ARG HOME_DIR=/home/josh
 
 ENV DEBIAN_FRONTEND=noninteractive
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -52,10 +61,10 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
 # so it doesn't collide with the host-matched UID/GID below.
 RUN userdel -r ubuntu 2>/dev/null || true; \
     if ! getent group "${GID}" >/dev/null; then groupadd -g "${GID}" "${CONTAINER_USER}"; fi \
-    && useradd -l -m -u "${UID}" -g "${GID}" -s /bin/bash "${CONTAINER_USER}" \
+    && useradd -l -m -u "${UID}" -g "${GID}" -d "${HOME_DIR}" -s /bin/bash "${CONTAINER_USER}" \
     && echo "${CONTAINER_USER} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/"${CONTAINER_USER}" \
     && chmod 0440 /etc/sudoers.d/"${CONTAINER_USER}" \
-    && install -d -o "${UID}" -g "${GID}" -m 0700 "/home/${CONTAINER_USER}/.claude"
+    && install -d -o "${UID}" -g "${GID}" -m 0700 "${HOME_DIR}/.claude"
 
 # docker group with the host's GID, so the user can use the mounted socket.
 RUN if getent group "${DOCKER_GID}" >/dev/null; then \
@@ -67,7 +76,7 @@ RUN if getent group "${DOCKER_GID}" >/dev/null; then \
 USER ${CONTAINER_USER}
 WORKDIR /scratch/anarkiwi/infra/claude
 
-ENV PATH="/home/${CONTAINER_USER}/.local/bin:${PATH}"
+ENV PATH="${HOME_DIR}/.local/bin:${PATH}"
 
 # Native claude install lands in ~/.local (outside the mounted ~/.claude).
 # CACHEBUST is the latest claude version (set by run.sh): the download below
