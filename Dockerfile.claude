@@ -1,9 +1,7 @@
 # Claude Code interactive container.
-# Runs the native claude binary as a non-root user whose UID/GID/name (and
-# home directory contents, e.g. ~/.ssh) are set by run.sh -- normally the
-# shared "claude" identity, host-overridable per repo -- while the home
-# directory *path* stays at the invoking host user's $HOME (see HOME_DIR
-# below), so bind-mounted ~/.claude, ~/.ssh and /scratch keep correct
+# Runs the native claude binary as the invoking user -- the shared "claude"
+# identity by default -- with the UID/GID and home directory path run.sh
+# passes in, so bind-mounted ~/.claude, ~/.ssh and /scratch keep correct
 # ownership. The host's ~/.claude credentials, settings and global CLAUDE.md
 # are bind-mounted in, and ~/.claude.json is seeded (copied, not mounted) by
 # the entrypoint so the client recognises the existing authenticated
@@ -12,16 +10,16 @@
 # for driving the host socket.
 FROM ubuntu:24.04
 
-ARG CONTAINER_USER=josh
-ARG UID=1000
-ARG GID=1000
+# Defaults describe the shared "claude" identity (UID 3001, "sw" group);
+# run.sh overrides them with the invoking user's own values.
+ARG CONTAINER_USER=claude
+ARG UID=3001
+ARG GID=3001
 # Must match the host's docker group so the mounted socket is writable.
 ARG DOCKER_GID=998
-# Home directory path: kept at the invoking host user's $HOME (not
-# /home/${CONTAINER_USER}) so host-side bind mounts under $HOME (~/.ssh,
-# ~/.claude, ~/.gitconfig, ...) still land in the right place even though
-# CONTAINER_USER/UID/GID may name a different identity (e.g. "claude"/"sw").
-ARG HOME_DIR=/home/josh
+# Home directory path: identical to the host, so $HOME-relative bind mounts
+# (~/.ssh, ~/.claude, ~/.gitconfig, ...) land in the right place.
+ARG HOME_DIR=/home/claude
 
 ENV DEBIAN_FRONTEND=noninteractive
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
