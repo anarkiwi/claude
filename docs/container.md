@@ -43,19 +43,28 @@ All host-side sources are the invoking identity's `$HOME`.
   docker can't materialise a stray directory in its place.
 - `~/.claude.json` and `~/.claude/settings.json` — seeded read-only; the
   entrypoint copies each to a writable in-container path, so session writes stay
-  ephemeral and never touch the host. For settings it also merges in the hooks
-  block baked into the image (see [hooks.md](hooks.md)), so the guards are wired
-  even when the host settings omit them.
+  ephemeral and never touch the host. For settings it also overlays the image's
+  canonical `settings.json` (see [Settings](#settings)).
 - `/scratch`, the host docker socket, `/etc/pip.conf`, `~/.config/gh` and
   `~/.gitconfig` (ro).
 - `~/.ssh` (ro, with `known_hosts` remounted read-write so new host keys
   persist).
-- `/tmp` — persisted per container name under `/scratch/tmp/<name>`; the
-  entrypoint creates a venv there once and reuses it across restarts.
+- `/opt/venv` — persisted per container name under `/scratch/venv/<name>`; the
+  entrypoint creates the venv there once and reuses it across restarts.
 
-Session state (conversations, history, tasks) lives only in the container and
-is discarded on exit. With no args, `run.sh` starts a `--remote-control`
-session named `<host>-<dir>`.
+`.credentials.json` is the only read-write host state, so a fresh login sticks;
+config is read-only. Everything a session writes — conversations, history,
+memories, `/tmp` scratch — lives only in the container and is discarded on exit.
+With no args, `run.sh` starts a `--remote-control` session named `<host>-<dir>`.
+
+## Settings
+
+The image's `settings.json` is canonical: the entrypoint merges it over the
+host seed and it wins on conflict, so every container gets `auto` permission
+mode, the shared allow list and the PreToolUse guards (see
+[hooks.md](hooks.md)) regardless of host settings. The `permissions.allow` and
+`hooks.PreToolUse` lists are unioned rather than replaced, so host entries
+survive; host-only keys (e.g. `theme`) pass through untouched.
 
 ## Credentials
 
