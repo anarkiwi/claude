@@ -13,9 +13,11 @@ UID/GID, home path, `~/.ssh` and Claude Code credentials, plus the host's
 docker socket, `/scratch`, `~/.config/gh` and `~/.claude` settings
 bind-mounted in. Each identity on each host keeps its **own** login — sharing
 one across containers invalidates it, see
-[docs/container.md](docs/container.md#credentials). Session state stays in the
-container and is discarded on exit. Host-specific extras (device mounts,
-`--privileged`) are opt-in via `hosts/<hostname>.sh`.
+[docs/container.md](docs/container.md#credentials). Credentials are the only
+read-write host state; config is read-only, and session state (conversations,
+history, memories, `/tmp`) is discarded on exit. Permission mode defaults to
+`auto` from the image `settings.json`, which wins over the host's. Host-specific
+extras (device mounts, `--privileged`) are opt-in via `hosts/<hostname>.sh`.
 See [docs/container.md](docs/container.md).
 
 ## Hooks

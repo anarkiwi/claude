@@ -15,24 +15,30 @@ if [[ -f "${SEED}" ]]; then
     cp "${SEED}" "${DEST}"
 fi
 
-# Wire the PreToolUse guard hooks without depending on the host settings: seed
-# the writable settings.json from the host (or {} if absent) and merge in the
-# hooks block baked into the image, deduping so re-runs stay idempotent.
+# Seed the writable settings.json from the host (or {} if absent), then overlay
+# the image's canonical settings, which win: that is what enables auto
+# permission mode and the PreToolUse guards without depending on host settings.
+# The allow and hook lists are unioned rather than replaced, so host entries
+# survive, deduped so re-runs stay idempotent.
 SETTINGS_SEED="${HOME}/.claude/settings.json.seed"
 SETTINGS="${HOME}/.claude/settings.json"
-HOOK_SRC="/usr/local/share/claude-settings.json"
+IMAGE_SETTINGS="/usr/local/share/claude-settings.json"
 BASE='{}'
 if [[ -f "${SETTINGS_SEED}" ]] && jq -e . "${SETTINGS_SEED}" >/dev/null 2>&1; then
     BASE="$(cat "${SETTINGS_SEED}")"
 fi
-printf '%s' "${BASE}" | jq --slurpfile s "${HOOK_SRC}" \
-    '.hooks.PreToolUse = ((.hooks.PreToolUse // []) + ($s[0].hooks.PreToolUse // []) | unique_by(tojson))' \
-    > "${SETTINGS}"
+printf '%s' "${BASE}" | jq --slurpfile s "${IMAGE_SETTINGS}" '
+    def union($a; $b): (($a // []) + ($b // [])) | unique_by(tojson);
+    . as $host | ($host * $s[0])
+    | .hooks.PreToolUse = union($host.hooks.PreToolUse; $s[0].hooks.PreToolUse)
+    | .permissions.allow = union($host.permissions.allow; $s[0].permissions.allow)
+' > "${SETTINGS}"
 
-# /tmp is a persistent host mount; create a venv there once and activate it so
-# session state (and the venv) survives container restarts.
-VENV="/tmp/venv"
-if [[ ! -d "${VENV}" ]]; then
+# The venv is the only host-persisted runtime state (/tmp is container-local, so
+# session scratch dies with the container): create it once on the mount and
+# activate it, so installed packages survive restarts.
+VENV="/opt/venv"
+if [[ ! -x "${VENV}/bin/python" ]]; then
     python3 -m venv "${VENV}"
 fi
 # shellcheck disable=SC1091

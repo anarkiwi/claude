@@ -6,12 +6,13 @@
 # The host's docker socket, /scratch, apt/pip proxy config and the identity's
 # ~/.ssh, ~/.config/gh and ~/.gitconfig are mounted in.
 #
-# Credentials come from the identity's own ~/.claude, so each identity on each
-# host keeps its own login -- see the CREDS block below for why sharing one is
-# actively harmful. ~/.claude.json and settings.json are seeded read-only
-# (copied to writable paths by the entrypoint) so the client recognises the
-# existing install; session state (conversations, history, tasks) lives in the
-# container and is discarded when it exits.
+# Credentials come from the identity's own ~/.claude and are the only host state
+# mounted read-write, so a login inside the container persists -- see the CREDS
+# block below for why each identity on each host keeps its own. Config
+# (~/.claude.json, settings.json, CLAUDE.md) is mounted read-only and copied to
+# writable paths by the entrypoint, so the client recognises the existing
+# install; session state (conversations, history, memories, /tmp scratch) lives
+# in the container and is discarded when it exits.
 set -euo pipefail
 
 # Resolve this script's own directory so the build always targets the claude
@@ -115,14 +116,15 @@ if [[ ${#RUN_ARGS[@]} -eq 0 ]]; then
     RUN_ARGS=(--remote-control "${NAME}")
 fi
 
-# Persist the container's /tmp on the host, one dir per container name. Created
-# group-writable on first run; reused (left intact) on later runs so the
-# venv/session survive.
-CONTAINER_TMP="/scratch/tmp/${NAME}"
-if [[ ! -d "${CONTAINER_TMP}" ]]; then
-    mkdir -p "${CONTAINER_TMP}"
-    chgrp sw "${CONTAINER_TMP}"
-    chmod g+w "${CONTAINER_TMP}"
+# Persist only the venv on the host, one dir per container name. Everything else
+# a session writes -- /tmp scratch, conversations, history, memories -- stays in
+# the container and dies with it. Created group-writable on first run; reused on
+# later runs so installed packages survive.
+CONTAINER_VENV="/scratch/venv/${NAME}"
+if [[ ! -d "${CONTAINER_VENV}" ]]; then
+    mkdir -p "${CONTAINER_VENV}"
+    chgrp sw "${CONTAINER_VENV}"
+    chmod g+w "${CONTAINER_VENV}"
 fi
 
 # known_hosts must be writable so the container can record host keys it hasn't
@@ -177,7 +179,7 @@ exec docker run --rm -it \
     --pids-limit "${PIDS_LIMIT}" \
     --memory "${MEMORY_LIMIT}" \
     "${HOST_DOCKER_ARGS[@]}" \
-    -v "${CONTAINER_TMP}:/tmp" \
+    -v "${CONTAINER_VENV}:/opt/venv" \
     -v /scratch:/scratch \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v /etc/pip.conf:/etc/pip.conf:ro \

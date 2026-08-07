@@ -2,12 +2,12 @@
 # Runs the native claude binary as the invoking user -- the shared "claude"
 # identity by default -- with the UID/GID and home directory path run.sh
 # passes in, so bind-mounted ~/.claude, ~/.ssh and /scratch keep correct
-# ownership. The host's ~/.claude credentials, settings and global CLAUDE.md
-# are bind-mounted in, and ~/.claude.json is seeded (copied, not mounted) by
-# the entrypoint so the client recognises the existing authenticated
-# install; all session state (conversations, history, tasks) stays in the
-# container and is discarded on exit. Includes the docker CLI (no daemon)
-# for driving the host socket.
+# ownership. The host's ~/.claude credentials are bind-mounted read-write so a
+# login persists; settings, global CLAUDE.md and ~/.claude.json are read-only
+# seeds the entrypoint copies to writable paths, so the client recognises the
+# existing authenticated install. All session state (conversations, history,
+# memories) stays in the container and is discarded on exit. Includes the
+# docker CLI (no daemon) for driving the host socket.
 FROM ubuntu:24.04
 
 # Defaults describe the shared "claude" identity (UID 3001, "sw" group);
@@ -88,8 +88,9 @@ COPY --chmod=0755 entrypoint.sh /usr/local/bin/entrypoint.sh
 # (settings.json references it by this absolute path). Runs on the system python3.
 COPY --chmod=0755 hooks/min_comments.py /usr/local/bin/min-comments-hook
 
-# Canonical shared settings; the entrypoint merges its hooks block into the
-# writable in-container settings so the guard is wired without host changes.
+# Canonical shared settings (auto permission mode, allow list, guard hooks);
+# the entrypoint overlays these on the host seed, so they apply without host
+# changes.
 COPY settings.json /usr/local/share/claude-settings.json
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
