@@ -6,24 +6,21 @@ the client recognises the existing authenticated install.
 
 ## Identity
 
-The image is built with `CONTAINER_USER`/`UID`/`GID` defaulting to the shared
-`claude` user and `sw` group -- looked up on the invoking host via `id -u
-claude` and `getent group sw` -- not the invoking host user, and `DOCKER_GID`
-from the host `docker` group, creating a matching non-root user with
-passwordless sudo and membership of the docker group. Host config
-(`hosts/<hostname>.sh`) can override the identity per repo: see
-[Host-specific config](#host-specific-config).
+The container runs as the **invoking user**, which must be one of the shared
+`claude` (default) or `ansible` identities — `run.sh` exits with an error for
+anyone else. Those accounts exist with the same UID on every host, so SSH
+keys, credentials and file ownership follow the account rather than the
+machine, and no privilege escalation (`sudo`) is needed on the host side.
 
-`HOME_DIR` keeps the container user's home directory at the invoking host
-user's `$HOME` (e.g. `/home/josh`), not `/home/${CONTAINER_USER}`, so
-`$HOME`-relative bind mounts (`~/.claude`, `~/.gitconfig`, ...) still land in
-the right place even though `CONTAINER_USER` names a different account.
-`~/.ssh` is the exception: `run.sh` mounts it from the active identity's own
-home (`SSH_HOME`, default the `claude` account's home; see
-[Mounts](#mounts)), not the invoking user's, since SSH keys belong to the
-identity, not the host account running `run.sh`. Other host-side config
-(git, etc.) still comes from the invoking user's `$HOME` and migrates over
-gradually.
+`CONTAINER_USER`/`UID` therefore come from `id -un`/`id -u`, `GID` from the
+`sw` group shared by both identities, `DOCKER_GID` from the host `docker`
+group, and `HOME_DIR` from `$HOME` — so the container home is the same path as
+the host home and every `$HOME`-relative bind mount (`~/.claude`, `~/.ssh`,
+`~/.gitconfig`, ...) lands in the right place with correct ownership. The
+image's `ARG` defaults describe the `claude` identity; `run.sh` always passes
+its own values.
+
+To run a repo under the `ansible` identity, invoke `run.sh` as that user.
 
 `USER` is set to `CONTAINER_USER` (the name), not a numeric UID: a numeric
 value stops runc resolving supplementary groups (the `docker` group
@@ -38,24 +35,21 @@ hits Docker's normal build cache.
 
 ## Mounts
 
-- `~/.claude/.credentials.json` — from `SSH_HOME`, the active identity's own
-  home, **not** the invoking user's. Each identity on each host keeps its own
+All host-side sources are the invoking identity's `$HOME`.
+
+- `~/.claude/.credentials.json` — each identity on each host keeps its own
   login; see [Credentials](#credentials) for why sharing one breaks.
-- global `CLAUDE.md` (ro) — from the invoking user's `$HOME`, since it is
-  shared guidance rather than identity state. Skipped when absent or a
-  dangling symlink, so docker can't materialise a stray directory in its
-  place.
+- global `CLAUDE.md` (ro) — skipped when absent or a dangling symlink, so
+  docker can't materialise a stray directory in its place.
 - `~/.claude.json` and `~/.claude/settings.json` — seeded read-only; the
   entrypoint copies each to a writable in-container path, so session writes stay
   ephemeral and never touch the host. For settings it also merges in the hooks
   block baked into the image (see [hooks.md](hooks.md)), so the guards are wired
   even when the host settings omit them.
-- `/scratch`, the host docker socket, `/etc/pip.conf`, the pip cache,
-  `~/.config/gh`, and `~/.gitconfig` (ro) — from the invoking host user's
-  `$HOME`.
+- `/scratch`, the host docker socket, `/etc/pip.conf`, `~/.config/gh` and
+  `~/.gitconfig` (ro).
 - `~/.ssh` (ro, with `known_hosts` remounted read-write so new host keys
-  persist) — from `SSH_HOME`, the active container identity's own home (see
-  [Identity](#identity)), not the invoking user's.
+  persist).
 - `/tmp` — persisted per container name under `/scratch/tmp/<name>`; the
   entrypoint creates a venv there once and reuses it across restarts.
 
@@ -66,8 +60,8 @@ session named `<host>-<dir>`.
 ## Credentials
 
 Claude Code persists its OAuth login to `~/.claude/.credentials.json`. That
-file belongs to the **identity**, so it is mounted from `SSH_HOME` and every
-identity on every host keeps its own.
+file belongs to the **identity**, so every identity on every host keeps its
+own.
 
 Sharing one credential across containers is not merely untidy — it destroys
 it. The OAuth refresh token rotates on refresh, so two containers using the
@@ -79,8 +73,7 @@ josh's credentials (`chgrp sw` / `chmod g+r`) so containers running as a
 different UID could read them — a correctly-scoped credential never needs
 that.
 
-`run.sh` pre-creates the file as the identity user before `docker run` sees
-it. This matters: docker silently materialises a **missing** bind-mount source
+`run.sh` pre-creates the file before `docker run` sees it. This matters: docker silently materialises a **missing** bind-mount source
 as a *root-owned directory*, which the container can then never log in to.
 The optional mounts (`.claude.json`, `settings.json`, `CLAUDE.md`) avoid this
 by simply not mounting when absent; the credentials mount can't, since the
@@ -93,18 +86,15 @@ file is never at risk.
 
 `run.sh` sources `hosts/<hostname>.sh` if it exists, before building the
 image, so it can append to the `HOST_DOCKER_ARGS` array passed to `docker
-run`, override resource caps (`PIDS_LIMIT`/`MEMORY_LIMIT`), or override the
-default identity (`CONTAINER_USER`/`CONTAINER_UID`/`CONTAINER_GID`/
-`SSH_HOME`) — typically keyed on `REPO_NAME` (the working directory's
-basename) so the override only applies to one repo. This is how
-host-specific extras and identity exceptions are opted in without changing
-the default config.
+run` or override resource caps (`PIDS_LIMIT`/`MEMORY_LIMIT`) — optionally
+keyed on `REPO_NAME` (the working directory's basename) so an override
+applies to one repo only. This is how host-specific extras are opted in
+without changing the default config. Identity is not overridable here: it is
+the invoking user (see [Identity](#identity)).
 
 See `hosts/vek-x.sh`, which grants `--privileged` and mounts `/dev/snd`,
 `/dev/video0`, `/dev/ttyACM0` and `/dev/bus/usb` for that host's attached
-audio/camera/serial/USB peripherals, and runs as the `ansible` user's UID
-and `~/.ssh` (instead of the default `claude` identity) when invoked from
-the `finf-ansible` repo specifically.
+audio/camera/serial/USB peripherals.
 
 ## Device packages and permissions
 
