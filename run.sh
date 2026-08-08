@@ -124,7 +124,7 @@ fi
 # the previous one's state, and the last session's files stay readable until the
 # next run. The venv is mounted separately (/opt/venv) so that wipe leaves
 # installed packages alone.
-for CONTAINER_DIR in "/scratch/tmp/${NAME}" "/scratch/venv/${NAME}"; do
+for CONTAINER_DIR in "/scratch/tmp/${NAME}" "/scratch/tmp/venv/${NAME}"; do
     if [[ ! -d "${CONTAINER_DIR}" ]]; then
         mkdir -p "${CONTAINER_DIR}"
         chgrp sw "${CONTAINER_DIR}"
@@ -185,7 +185,7 @@ exec docker run --rm -it \
     --memory "${MEMORY_LIMIT}" \
     "${HOST_DOCKER_ARGS[@]}" \
     -v "/scratch/tmp/${NAME}:/tmp" \
-    -v "/scratch/venv/${NAME}:/opt/venv" \
+    -v "/scratch/tmp/venv/${NAME}:/opt/venv" \
     -v /scratch:/scratch \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v /etc/pip.conf:/etc/pip.conf:ro \
