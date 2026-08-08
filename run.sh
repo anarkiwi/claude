@@ -11,8 +11,9 @@
 # block below for why each identity on each host keeps its own. Config
 # (~/.claude.json, settings.json, CLAUDE.md) is mounted read-only and copied to
 # writable paths by the entrypoint, so the client recognises the existing
-# install; session state (conversations, history, memories, /tmp scratch) lives
-# in the container and is discarded when it exits.
+# install; session state (conversations, history, memories) lives in the
+# container and is discarded when it exits. /tmp is host-backed so it can be
+# inspected from outside, but is emptied at startup rather than carried over.
 set -euo pipefail
 
 # Resolve this script's own directory so the build always targets the claude
@@ -116,16 +117,20 @@ if [[ ${#RUN_ARGS[@]} -eq 0 ]]; then
     RUN_ARGS=(--remote-control "${NAME}")
 fi
 
-# Persist only the venv on the host, one dir per container name. Everything else
-# a session writes -- /tmp scratch, conversations, history, memories -- stays in
-# the container and dies with it. Created group-writable on first run; reused on
-# later runs so installed packages survive.
-CONTAINER_VENV="/scratch/venv/${NAME}"
-if [[ ! -d "${CONTAINER_VENV}" ]]; then
-    mkdir -p "${CONTAINER_VENV}"
-    chgrp sw "${CONTAINER_VENV}"
-    chmod g+w "${CONTAINER_VENV}"
-fi
+# Host-side mounts for the container's /tmp and venv, one dir per container
+# name, created group-writable on first run. /tmp is on the host so the client's
+# working files (scratchpads, task output) can be read without exec'ing into the
+# container; the entrypoint empties it at startup, so a session never inherits
+# the previous one's state, and the last session's files stay readable until the
+# next run. The venv is mounted separately (/opt/venv) so that wipe leaves
+# installed packages alone.
+for CONTAINER_DIR in "/scratch/tmp/${NAME}" "/scratch/venv/${NAME}"; do
+    if [[ ! -d "${CONTAINER_DIR}" ]]; then
+        mkdir -p "${CONTAINER_DIR}"
+        chgrp sw "${CONTAINER_DIR}"
+        chmod g+w "${CONTAINER_DIR}"
+    fi
+done
 
 # known_hosts must be writable so the container can record host keys it hasn't
 # seen; ~/.ssh itself stays read-only to protect the private keys. Both must
@@ -179,7 +184,8 @@ exec docker run --rm -it \
     --pids-limit "${PIDS_LIMIT}" \
     --memory "${MEMORY_LIMIT}" \
     "${HOST_DOCKER_ARGS[@]}" \
-    -v "${CONTAINER_VENV}:/opt/venv" \
+    -v "/scratch/tmp/${NAME}:/tmp" \
+    -v "/scratch/venv/${NAME}:/opt/venv" \
     -v /scratch:/scratch \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v /etc/pip.conf:/etc/pip.conf:ro \
