@@ -163,9 +163,29 @@ world-accessible.
 What the driver injection does *not* supply is anything above `libcuda`:
 `nvcc`, the CUDA headers, cuDNN, the runtime that GPU wheels link against.
 That is what the base image swap is for, `-devel` rather than `-runtime` so
-code can be compiled in the container, not just run. CUDA minor versions are
-forward compatible within a major release, so a 13.3 toolkit runs on a 13.2
-driver; that pairing is the first thing to check if a CUDA call fails at init.
+code can be compiled in the container, not just run.
+
+The image's CUDA version and the host driver's need not match, but how they
+fail to match matters. defroster's driver (595.71.05) is a CUDA 13.2 driver
+running a 13.3 image, which works because the image ships `cuda-compat`:
+`ldconfig` resolves `libcuda.so.1` to `/usr/local/cuda-13.3/compat` ahead of
+the driver's own, and CUDA then reports 13.3 (verified — a kernel executes and
+`cudnnCreate` succeeds).
+
+Reaching that requires `-e NVIDIA_DISABLE_REQUIRE=1`. The image declares
+`NVIDIA_REQUIRE_CUDA "cuda>=13.3 ... driver>=595,driver<596"`; the driver
+clause passes, but `nvidia-container-cli` evaluates `cuda>=13.3` against the
+kernel driver rather than the compat libraries, and hard-fails the container at
+init with `unsatisfied condition: cuda>=13.3` before anything runs. The
+override is the documented escape hatch for a check testing the wrong thing,
+not a way to paper over a genuine incompatibility.
+
+Matching the image to the driver (`13.2.1-cudnn-devel-ubuntu24.04`) needs
+neither compat nor the override. The tradeoff is that `cuda-compat` forward
+compatibility is officially a datacenter-GPU feature, so on a GeForce it is
+working-but-unsupported. Either way, a container that dies at init with an
+`unsatisfied condition` is this check, and a CUDA call that fails later is the
+compat pairing.
 
 Everything else in `Dockerfile.claude` is plain apt-on-noble and builds
 unchanged on the CUDA image, which is itself derived from `ubuntu:24.04`.
