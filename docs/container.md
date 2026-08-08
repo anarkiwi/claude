@@ -26,12 +26,39 @@ To run a repo under the `ansible` identity, invoke `run.sh` as that user.
 value stops runc resolving supplementary groups (the `docker` group
 disappears from `id -Gn`), and hadolint flags it either way (DL3066, ignored
 in `.hadolint.yaml`) since it can't statically verify a build-arg value is
-numeric. The native `claude` binary installs into `~/.local` (outside the
-mounted `~/.claude`).
-`CACHEBUST` is the latest available `claude` version (resolved by `run.sh`),
-not a timestamp, so the ~300MB install layer only reruns — and only pays for
-a fresh download — when a new release actually ships; an unchanged version
-hits Docker's normal build cache.
+numeric.
+
+## Claude binary cache
+
+The `claude` binary is ~300MB and a new release ships most days, so where it
+comes from dominates build time. It is **not** downloaded inside the build:
+Docker's layer cache is per-daemon, so every host paid for every release
+separately. `run.sh` instead fetches it into a version-keyed cache on the
+shared `/scratch` NFS mount and hands that directory to the build as a named
+context:
+
+    /scratch/tmp/claude-dist/<platform>/<version>/claude
+
+The first host to see a release downloads it; the rest find it there and copy
+it over the LAN. `--build-context claude-dist=<dir>` plus `COPY --from` means
+the layer's cache key is the binary's *content*, so an unchanged version hits
+the normal build cache with no `CACHEBUST` build-arg to guess at (hadolint
+DL3022 is ignored inline: `--from` names a build context, not a stage).
+
+The fetch verifies the SHA-256 from the release manifest — the same one
+`install.sh` checks — and stages the download in a dot-directory, renaming it
+into place only once it verifies, so another host can never see a version
+directory holding a partial binary. Concurrent runs serialise on an `flock`
+over the same mount. The result is laid out exactly as `install.sh` leaves it
+(versioned file under `~/.local/share/claude/versions`, `~/.local/bin/claude`
+symlinked to it), so the client's own update path still works.
+
+If the version check is unreachable, `run.sh` falls back to the newest release
+already cached rather than to a fresh download, so an offline host still
+starts. That fallback is what the older versions are for, so the cache keeps
+the newest five and prunes the rest — under the same lock, and only when a new
+version actually lands, so a prune can neither race a fetch nor delete a
+version another host is copying into a build.
 
 ## Mounts
 
@@ -101,15 +128,47 @@ file is never at risk.
 
 `run.sh` sources `hosts/<hostname>.sh` if it exists, before building the
 image, so it can append to the `HOST_DOCKER_ARGS` array passed to `docker
-run` or override resource caps (`PIDS_LIMIT`/`MEMORY_LIMIT`) — optionally
-keyed on `REPO_NAME` (the working directory's basename) so an override
-applies to one repo only. This is how host-specific extras are opted in
-without changing the default config. Identity is not overridable here: it is
-the invoking user (see [Identity](#identity)).
+run` or override `BASE_IMAGE` and the resource caps
+(`PIDS_LIMIT`/`MEMORY_LIMIT`) — optionally keyed on `REPO_NAME` (the working
+directory's basename) so an override applies to one repo only. This is how
+host-specific extras are opted in without changing the default config.
+Identity is not overridable here: it is the invoking user (see
+[Identity](#identity)).
 
-See `hosts/vek-x.sh`, which grants `--privileged` and mounts `/dev/snd`,
-`/dev/video0`, `/dev/ttyACM0` and `/dev/bus/usb` for that host's attached
-audio/camera/serial/USB peripherals.
+See `hosts/vek-x.sh`, which grants `--privileged` for that host's attached
+audio/camera/serial/USB peripherals. `--privileged` bind-mounts the host's
+entire `/dev`, so those nodes need no `-v` of their own — and must not get
+one. Docker materialises a missing bind source as a root-owned *directory*,
+so mounting `-v /dev/ttyACM0:/dev/ttyACM0` while that device happens to be
+unplugged creates a directory at `/dev/ttyACM0` **on the host's devtmpfs**,
+which then shadows the real character device for every program on the host,
+not just the container, until it is `rmdir`'d and the device re-enumerated.
+Mounting host `/dev` wholesale via `--privileged` also tracks hotplug, which
+a per-node bind mount cannot: it pins one inode, so a replugged device leaves
+the container holding a stale node.
+
+## GPU
+
+`hosts/defroster.sh` is the GPU case: it adds `--gpus all` and swaps
+`BASE_IMAGE` to `nvidia/cuda:<version>-cudnn-devel-ubuntu24.04`. The two go
+together because they supply different halves. `--gpus` needs only
+`nvidia-container-toolkit` on the host — *not* an `nvidia` entry in the
+daemon's runtimes, which is why `docker info` listing only `runc` is not a
+problem: dockerd's built-in GPU device driver calls
+`nvidia-container-runtime-hook` itself, injecting the driver libraries,
+`nvidia-smi` and the `/dev/nvidia*` nodes at container start. Nothing to mount
+and nothing to `chmod` — unlike the peripherals above, those nodes arrive
+world-accessible.
+
+What the driver injection does *not* supply is anything above `libcuda`:
+`nvcc`, the CUDA headers, cuDNN, the runtime that GPU wheels link against.
+That is what the base image swap is for, `-devel` rather than `-runtime` so
+code can be compiled in the container, not just run. CUDA minor versions are
+forward compatible within a major release, so a 13.3 toolkit runs on a 13.2
+driver; that pairing is the first thing to check if a CUDA call fails at init.
+
+Everything else in `Dockerfile.claude` is plain apt-on-noble and builds
+unchanged on the CUDA image, which is itself derived from `ubuntu:24.04`.
 
 ## Device packages and permissions
 

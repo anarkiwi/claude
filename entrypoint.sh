@@ -51,10 +51,11 @@ fi
 # shellcheck disable=SC1091
 source "${VENV}/bin/activate"
 
-# Install userspace tooling for whichever host devices run.sh bind-mounted in
-# (see hosts/), then open up their permissions so using them doesn't need
-# sudo. The apt lists cached at build time (Dockerfile.claude keeps them)
-# make this apt-get install work without a prior apt-get update.
+# Install userspace tooling for whichever host devices are visible in the
+# container (on a --privileged host config that is the host's whole /dev; see
+# hosts/), then open up their permissions so using them doesn't need sudo.
+# The apt lists cached at build time (Dockerfile.claude keeps them) make this
+# apt-get install work without a prior apt-get update.
 declare -A DEVICE_PACKAGES=(
     [/dev/snd]=alsa-utils
     [/dev/video0]=v4l-utils
@@ -67,8 +68,16 @@ done
 if [[ ${#DEVICE_PKGS[@]} -gt 0 ]]; then
     sudo apt-get install -y --no-install-recommends "${DEVICE_PKGS[@]}"
 fi
-for dev in /dev/snd /dev/video0 /dev/ttyACM0 /dev/bus/usb; do
-    [[ -e "${dev}" ]] && sudo chmod -R a+rw "${dev}"
+# The tty entry is a glob: the CDC node's index follows enumeration order, so a
+# device that was replugged (or that shares the host with another CDC gadget)
+# comes back as ttyACM1 and up. A glob that matches nothing stays literal and
+# is skipped by the -e test. The test is inside an if rather than trailing a
+# && so a final non-existent entry cannot make the loop -- and, under set -e,
+# this script -- exit non-zero on a host with none of these devices attached.
+for dev in /dev/snd /dev/video0 /dev/ttyACM* /dev/bus/usb; do
+    if [[ -e "${dev}" ]]; then
+        sudo chmod -R a+rw "${dev}"
+    fi
 done
 
 exec claude "$@"

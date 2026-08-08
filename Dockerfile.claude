@@ -8,7 +8,12 @@
 # existing authenticated install. All session state (conversations, history,
 # memories) stays in the container and is discarded on exit. Includes the
 # docker CLI (no daemon) for driving the host socket.
-FROM ubuntu:24.04
+#
+# BASE_IMAGE is overridable per host (hosts/<hostname>.sh, via run.sh) so a
+# host with a GPU can build on an NVIDIA CUDA image instead; anything derived
+# from ubuntu:24.04 works unchanged, since every layer below is apt/noble.
+ARG BASE_IMAGE=ubuntu:24.04
+FROM ${BASE_IMAGE}
 
 # Defaults describe the shared "claude" identity (UID 3001, "sw" group);
 # run.sh overrides them with the invoking user's own values.
@@ -76,11 +81,21 @@ WORKDIR /scratch/anarkiwi/infra/claude
 
 ENV PATH="${HOME_DIR}/.local/bin:${PATH}"
 
-# Native claude install lands in ~/.local (outside the mounted ~/.claude).
-# CACHEBUST is the latest claude version (set by run.sh): the download below
-# only reruns, instead of hitting Docker's layer cache, when it changes.
-ARG CACHEBUST=0
-RUN curl -fsSL https://claude.ai/install.sh | bash
+# Native claude install, laid out exactly as claude.ai/install.sh leaves it:
+# the versioned binary under ~/.local/share (outside the mounted ~/.claude),
+# with ~/.local/bin/claude a symlink to it, so the client's own update path
+# still works. The binary itself arrives from "claude-dist", a named build
+# context run.sh points at a version-keyed cache on the shared /scratch mount
+# -- so a release is downloaded once for the whole fleet, not once per host,
+# and this layer's cache key is the binary's content rather than a version
+# string that must be guessed at.
+ARG CLAUDE_VERSION
+RUN install -d "${HOME_DIR}/.local/bin" "${HOME_DIR}/.local/share/claude/versions"
+# hadolint ignore=DL3022
+COPY --from=claude-dist --chown=${UID}:${GID} --chmod=0755 \
+    claude "${HOME_DIR}/.local/share/claude/versions/${CLAUDE_VERSION}"
+RUN ln -sf "${HOME_DIR}/.local/share/claude/versions/${CLAUDE_VERSION}" \
+        "${HOME_DIR}/.local/bin/claude"
 
 COPY --chmod=0755 entrypoint.sh /usr/local/bin/entrypoint.sh
 
