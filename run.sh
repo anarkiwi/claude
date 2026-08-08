@@ -66,13 +66,117 @@ if [[ -e "${HOME}/.claude/CLAUDE.md" ]]; then
     CLAUDE_MD_MOUNT=(-v "${HOME}/.claude/CLAUDE.md:${HOME}/.claude/CLAUDE.md:ro")
 fi
 
-# CACHEBUST is the latest available claude version, not a timestamp: the
-# install layer (a ~300MB download, minutes on a throttled link) only
-# reruns when a new release actually ships, since Docker reuses its cached
-# layer for an unchanged build-arg value. Falls back to a once-a-day value
-# if the version check itself fails, so a transient network blip costs at
-# most one rebuild rather than none.
-CACHEBUST="$(curl -fsSL --max-time 5 https://downloads.claude.ai/claude-code-releases/latest 2>/dev/null || date +%Y%m%d)"
+# The claude binary (~300MB) is cached on the shared /scratch mount, keyed by
+# platform and version, and handed to the build as a named context rather than
+# downloaded inside it. Docker's layer cache is per-daemon, so every host used
+# to pay the full download for each new release; this cache is one filesystem
+# the whole fleet shares, so the first host to see a release fetches it and the
+# rest copy it over the LAN. A few older versions are kept to back the offline
+# fallback below, and pruned past that.
+CLAUDE_RELEASES=https://downloads.claude.ai/claude-code-releases
+case "$(uname -m)" in
+x86_64) CLAUDE_PLATFORM=linux-x64 ;;
+aarch64) CLAUDE_PLATFORM=linux-arm64 ;;
+*)
+    echo "!! unsupported architecture $(uname -m)" >&2
+    exit 1
+    ;;
+esac
+CLAUDE_DIST=/scratch/tmp/claude-dist
+CLAUDE_CACHE="${CLAUDE_DIST}/${CLAUDE_PLATFORM}"
+# Cached releases to retain (see the prune below): enough that a host still on
+# an older image, or one that has lost the version check, finds something to
+# fall back to, without the cache growing by ~300MB a day forever.
+CLAUDE_KEEP=5
+for CACHE_DIR in "${CLAUDE_DIST}" "${CLAUDE_CACHE}"; do
+    mkdir -p "${CACHE_DIR}"
+    # Group-writable and setgid, so the version directories and lock file below
+    # stay in the shared group whichever identity creates them. Applied every
+    # run rather than only on create: a run that died between the mkdir and
+    # here would otherwise leave a directory the other identity can never write
+    # to. Failure is ignored because the case that causes it -- the directory
+    # belongs to the other identity -- is also the case where it is already
+    # correct.
+    chgrp sw "${CACHE_DIR}" 2>/dev/null || true
+    chmod g+ws "${CACHE_DIR}" 2>/dev/null || true
+done
+
+CLAUDE_VERSION="$(curl -fsSL --max-time 5 "${CLAUDE_RELEASES}/latest" 2>/dev/null || true)"
+if [[ ! "${CLAUDE_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+    # Version check failed, or returned something that isn't a version (an
+    # error page). Fall back to the newest release already cached, so an
+    # unreachable network costs nothing at all rather than a rebuild. sort -V,
+    # so 2.1.9 doesn't outrank 2.1.10.
+    shopt -s nullglob
+    CACHED=("${CLAUDE_CACHE}"/*/claude)
+    shopt -u nullglob
+    if [[ ${#CACHED[@]} -eq 0 ]]; then
+        echo "!! ${CLAUDE_RELEASES} unreachable and ${CLAUDE_CACHE} is empty" >&2
+        exit 1
+    fi
+    CLAUDE_VERSION="$(printf '%s\n' "${CACHED[@]%/claude}" | sed 's|.*/||' | sort -V | tail -1)"
+    echo "?? version check failed, using cached claude ${CLAUDE_VERSION}" >&2
+fi
+
+if [[ ! -x "${CLAUDE_CACHE}/${CLAUDE_VERSION}/claude" ]]; then
+    LOCK="${CLAUDE_DIST}/.lock"
+    [[ -f "${LOCK}" ]] || install -m 0664 /dev/null "${LOCK}"
+    # flock (NFSv4 has real locking) so hosts starting together fetch once
+    # between them; the test is repeated inside because the winner of the race
+    # populates the cache while the others wait on the lock.
+    (
+        flock 9
+        if [[ ! -x "${CLAUDE_CACHE}/${CLAUDE_VERSION}/claude" ]]; then
+            echo ">> fetching claude ${CLAUDE_VERSION} (${CLAUDE_PLATFORM})" >&2
+            # Checksum from the release manifest, the same one install.sh
+            # verifies against, extracted without jq since the host may not
+            # have it. The ":{" in the key pattern keeps "linux-x64" from
+            # matching the "linux-x64-musl" entry.
+            SHA="$(curl -fsSL "${CLAUDE_RELEASES}/${CLAUDE_VERSION}/manifest.json" |
+                tr -d ' \n' |
+                grep -o "\"${CLAUDE_PLATFORM}\":{[^}]*}" |
+                grep -o '"checksum":"[a-f0-9]\{64\}"' | cut -d'"' -f4)"
+            if [[ ! "${SHA}" =~ ^[a-f0-9]{64}$ ]]; then
+                echo "!! no ${CLAUDE_PLATFORM} checksum in the ${CLAUDE_VERSION} manifest" >&2
+                exit 1
+            fi
+            # Staged in a dot-directory and renamed only once the checksum
+            # verifies: a version directory is therefore never visible to
+            # another host holding a partial or unverified binary, and the
+            # dot prefix keeps a crashed run's leftovers out of the glob above.
+            STAGE="${CLAUDE_CACHE}/.stage.$$"
+            trap 'rm -rf "${STAGE}"' EXIT
+            mkdir -p "${STAGE}"
+            curl -fsSL --retry 3 -o "${STAGE}/claude" \
+                "${CLAUDE_RELEASES}/${CLAUDE_VERSION}/${CLAUDE_PLATFORM}/claude"
+            echo "${SHA}  ${STAGE}/claude" | sha256sum -c - >/dev/null
+            chmod 0755 "${STAGE}/claude"
+            # Group-writable so the prune below works whichever identity
+            # fetched the version being removed.
+            chmod 2775 "${STAGE}"
+            mv "${STAGE}" "${CLAUDE_CACHE}/${CLAUDE_VERSION}"
+
+            # Releases ship most days at ~300MB each, so the cache needs a
+            # bound. Pruning here rather than every run means it costs nothing
+            # except when a new version actually lands, and the lock held over
+            # it keeps a prune from deleting a version another host is copying
+            # into a build right now.
+            shopt -s nullglob
+            CACHED=("${CLAUDE_CACHE}"/*/claude)
+            shopt -u nullglob
+            printf '%s\n' "${CACHED[@]%/claude}" | sed 's|.*/||' | sort -V |
+                head -n "-${CLAUDE_KEEP}" |
+                while read -r stale; do
+                    # Empty-name guard, paired with the :? below: an empty
+                    # CACHED expands to one empty line, which would point this
+                    # rm at the whole cache rather than at one version.
+                    if [[ -n "${stale}" ]]; then
+                        rm -rf "${CLAUDE_CACHE:?}/${stale}"
+                    fi
+                done
+        fi
+    ) 9>"${LOCK}"
+fi
 
 HOST="$(hostname -s)"
 REPO_NAME="$(basename "$(pwd)")"
@@ -88,11 +192,15 @@ PIDS_LIMIT="${PIDS_LIMIT:-2048}"
 HOST_MEM_BYTES="$(free -b | awk '/^Mem:/{print $2}')"
 MEMORY_LIMIT="${MEMORY_LIMIT:-$(( (HOST_MEM_BYTES - 1073741824) / 1048576 ))m}"
 
-# Host-specific docker flags (e.g. --privileged, device mounts) live in
-# hosts/<hostname>.sh and are opt-in per host; the default config mounts no
-# devices. The same file can override PIDS_LIMIT/MEMORY_LIMIT or push more
+# Base image, likewise overridable per host: a GPU host builds on an NVIDIA
+# CUDA image so the toolkit is present alongside the driver docker injects.
+BASE_IMAGE="${BASE_IMAGE:-ubuntu:24.04}"
+
+# Host-specific docker flags (e.g. --privileged, --gpus) live in
+# hosts/<hostname>.sh and are opt-in per host; the default config adds none.
+# The same file can override BASE_IMAGE/PIDS_LIMIT/MEMORY_LIMIT or push more
 # entries onto HOST_DOCKER_ARGS, keyed on REPO_NAME where an override should
-# apply to one repo only. See hosts/vek-x.sh for an example.
+# apply to one repo only. See hosts/vek-x.sh and hosts/defroster.sh.
 HOST_DOCKER_ARGS=()
 HOST_CONFIG="${SCRIPT_DIR}/hosts/${HOST}.sh"
 if [[ -f "${HOST_CONFIG}" ]]; then
@@ -102,12 +210,14 @@ fi
 
 # Always rebuild so the image tracks the latest claude and container identity.
 docker build \
+    --build-arg "BASE_IMAGE=${BASE_IMAGE}" \
     --build-arg "CONTAINER_USER=${CONTAINER_USER}" \
     --build-arg "UID=${CONTAINER_UID}" \
     --build-arg "GID=${CONTAINER_GID}" \
     --build-arg "DOCKER_GID=${DOCKER_GID}" \
     --build-arg "HOME_DIR=${HOME}" \
-    --build-arg "CACHEBUST=${CACHEBUST}" \
+    --build-arg "CLAUDE_VERSION=${CLAUDE_VERSION}" \
+    --build-context "claude-dist=${CLAUDE_CACHE}/${CLAUDE_VERSION}" \
     -t "${IMAGE}" -f "${SCRIPT_DIR}/Dockerfile.claude" "${SCRIPT_DIR}"
 
 # Default to an interactive Remote Control session under NAME when no explicit
