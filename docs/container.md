@@ -49,13 +49,19 @@ All host-side sources are the invoking identity's `$HOME`.
   `~/.gitconfig` (ro).
 - `~/.ssh` (ro, with `known_hosts` remounted read-write so new host keys
   persist).
-- `/opt/venv` — persisted per container name under `/scratch/venv/<name>`; the
-  entrypoint creates the venv there once and reuses it across restarts.
+- `/tmp` — host-backed per container name under `/scratch/tmp/<name>`, so the
+  client's working files (scratchpads, task output) can be read live without
+  `docker exec`. The entrypoint empties it at startup, so a session never
+  inherits the previous one's scratch, and the last session's files stay
+  readable until the next run.
+- `/opt/venv` — persisted per container name under `/scratch/venv/<name>`; a
+  separate mount so the `/tmp` wipe leaves it alone. The entrypoint creates the
+  venv there once and reuses it across restarts.
 
 `.credentials.json` is the only read-write host state, so a fresh login sticks;
-config is read-only. Everything a session writes — conversations, history,
-memories, `/tmp` scratch — lives only in the container and is discarded on exit.
-With no args, `run.sh` starts a `--remote-control` session named `<host>-<dir>`.
+config is read-only. Session state — conversations, history, memories — lives
+only in the container and is discarded on exit. With no args, `run.sh` starts a
+`--remote-control` session named `<host>-<dir>`.
 
 ## Settings
 

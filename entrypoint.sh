@@ -34,9 +34,16 @@ printf '%s' "${BASE}" | jq --slurpfile s "${IMAGE_SETTINGS}" '
     | .permissions.allow = union($host.permissions.allow; $s[0].permissions.allow)
 ' > "${SETTINGS}"
 
-# The venv is the only host-persisted runtime state (/tmp is container-local, so
-# session scratch dies with the container): create it once on the mount and
-# activate it, so installed packages survive restarts.
+# /tmp is a host mount so the client's working files are visible from outside
+# (see run.sh), which would otherwise carry a session's scratch into the next
+# one: empty it here instead, so only the live session's state is ever present.
+# mindepth 1 keeps the mount point itself; sudo covers root-owned leftovers
+# (e.g. from the apt-get below), which would otherwise fail under set -e.
+sudo find /tmp -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+
+# The venv is the one piece of host-persisted runtime state, on its own mount so
+# the wipe above leaves it alone: create it once and activate it, so installed
+# packages survive restarts.
 VENV="/opt/venv"
 if [[ ! -x "${VENV}/bin/python" ]]; then
     python3 -m venv "${VENV}"
