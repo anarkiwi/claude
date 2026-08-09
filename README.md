@@ -17,7 +17,8 @@ one across containers invalidates it, see
 read-write host state; config is read-only, and session state (conversations,
 history, memories) is discarded on exit. The container's `/tmp` is host-backed
 at `/scratch/tmp/<name>` for live inspection, and emptied at startup. Permission mode defaults to
-`auto` from the image `settings.json`, which wins over the host's. The
+`auto` from the image `settings.json`, which wins over the host's, and this
+repo's `CLAUDE.md` is installed as the container's global one. The
 `claude` binary is fetched into a version-keyed cache under
 `/scratch/tmp/claude-dist`, shared by every host, so a release is downloaded
 once for the fleet. Host-specific extras (`--privileged`, `--gpus`, a CUDA

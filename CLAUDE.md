@@ -1,6 +1,7 @@
 # Global coding directives
 
-Shared user-level guidance, applied across all projects. Project-specific
+Installed into the image as the container's global `CLAUDE.md`, so it applies
+across all projects. Project-specific
 `CLAUDE.md` files override or extend anything here. These directives
 must be passed to all sub-agents.
 
