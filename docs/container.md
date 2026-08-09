@@ -66,8 +66,6 @@ All host-side sources are the invoking identity's `$HOME`.
 
 - `~/.claude/.credentials.json` — each identity on each host keeps its own
   login; see [Credentials](#credentials) for why sharing one breaks.
-- global `CLAUDE.md` (ro) — skipped when absent or a dangling symlink, so
-  docker can't materialise a stray directory in its place.
 - `~/.claude.json` and `~/.claude/settings.json` — seeded read-only; the
   entrypoint copies each to a writable in-container path, so session writes stay
   ephemeral and never touch the host. For settings it also overlays the image's
@@ -99,6 +97,10 @@ mode, the shared allow list and the PreToolUse guards (see
 `hooks.PreToolUse` lists are unioned rather than replaced, so host entries
 survive; host-only keys (e.g. `theme`) pass through untouched.
 
+This repo's `CLAUDE.md` is copied into the image as the container's global
+`~/.claude/CLAUDE.md`, so the shared coding directives reach every client from
+version control rather than from a per-host, per-identity file.
+
 ## Credentials
 
 Claude Code persists its OAuth login to `~/.claude/.credentials.json`. That
@@ -117,7 +119,7 @@ that.
 
 `run.sh` pre-creates the file before `docker run` sees it. This matters: docker silently materialises a **missing** bind-mount source
 as a *root-owned directory*, which the container can then never log in to.
-The optional mounts (`.claude.json`, `settings.json`, `CLAUDE.md`) avoid this
+The optional mounts (`.claude.json`, `settings.json`) avoid this
 by simply not mounting when absent; the credentials mount can't, since the
 container needs somewhere to persist a fresh login, so it creates an empty
 `0600` file instead. It also repairs the directory artifact if an earlier run

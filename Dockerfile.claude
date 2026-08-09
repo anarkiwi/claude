@@ -3,9 +3,9 @@
 # identity by default -- with the UID/GID and home directory path run.sh
 # passes in, so bind-mounted ~/.claude, ~/.ssh and /scratch keep correct
 # ownership. The host's ~/.claude credentials are bind-mounted read-write so a
-# login persists; settings, global CLAUDE.md and ~/.claude.json are read-only
-# seeds the entrypoint copies to writable paths, so the client recognises the
-# existing authenticated install. All session state (conversations, history,
+# login persists; settings and ~/.claude.json are read-only seeds the entrypoint
+# copies to writable paths, so the client recognises the existing authenticated
+# install. The global CLAUDE.md is this repo's, baked into the image. All session state (conversations, history,
 # memories) stays in the container and is discarded on exit. Includes the
 # docker CLI (no daemon) for driving the host socket.
 #
@@ -107,5 +107,9 @@ COPY --chmod=0755 hooks/min_comments.py /usr/local/bin/min-comments-hook
 # the entrypoint overlays these on the host seed, so they apply without host
 # changes.
 COPY settings.json /usr/local/share/claude-settings.json
+
+# This repo's coding directives, installed as the container's global CLAUDE.md,
+# so every client gets them from the image rather than from a host file.
+COPY --chown=${UID}:${GID} CLAUDE.md "${HOME_DIR}/.claude/CLAUDE.md"
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

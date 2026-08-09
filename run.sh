@@ -9,9 +9,9 @@
 # Credentials come from the identity's own ~/.claude and are the only host state
 # mounted read-write, so a login inside the container persists -- see the CREDS
 # block below for why each identity on each host keeps its own. Config
-# (~/.claude.json, settings.json, CLAUDE.md) is mounted read-only and copied to
-# writable paths by the entrypoint, so the client recognises the existing
-# install; session state (conversations, history, memories) lives in the
+# (~/.claude.json, settings.json) is mounted read-only and copied to writable
+# paths by the entrypoint, so the client recognises the existing install; the
+# global CLAUDE.md comes from this repo via the image; session state (conversations, history, memories) lives in the
 # container and is discarded when it exits. /tmp is host-backed so it can be
 # inspected from outside, but is emptied at startup rather than carried over.
 set -euo pipefail
@@ -56,14 +56,6 @@ fi
 SETTINGS_MOUNT=()
 if [[ -f "${HOME}/.claude/settings.json" ]]; then
     SETTINGS_MOUNT=(-v "${HOME}/.claude/settings.json:${HOME}/.claude/settings.json.seed:ro")
-fi
-
-# The global CLAUDE.md is shared guidance rather than identity state, but is
-# guarded like the seed mounts: an absent source would become a stray
-# root-owned directory.
-CLAUDE_MD_MOUNT=()
-if [[ -e "${HOME}/.claude/CLAUDE.md" ]]; then
-    CLAUDE_MD_MOUNT=(-v "${HOME}/.claude/CLAUDE.md:${HOME}/.claude/CLAUDE.md:ro")
 fi
 
 # The claude binary (~300MB) is cached on the shared /scratch mount, keyed by
@@ -300,7 +292,6 @@ exec docker run --rm -it \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v /etc/pip.conf:/etc/pip.conf:ro \
     "${APT_PROXY_MOUNTS[@]}" \
-    "${CLAUDE_MD_MOUNT[@]}" \
     "${SEED_MOUNT[@]}" \
     "${SETTINGS_MOUNT[@]}" \
     -v "${CREDS}:${CREDS}" \
