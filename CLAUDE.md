@@ -14,6 +14,7 @@ must be passed to all sub-agents.
     * minimize narrative comments (especially comments with overly specific numbers or travel-diary style narrative). stick to compactly stated facts.
     * use subagents to execute changes where possible, minimizing complexity and the need for design decisions so subagents are most likely to succeed on their own.
     * commit and push to PRs, always watch PR status and fix broken tests and merge on green.
+    * always delete worktrees and branches, locally and remotely when they have been merged.
 * for public git repos:
     * must not include any copyrighted material, but you can can retrieve and cache for fixtures.
 * if the project is a git repo:
