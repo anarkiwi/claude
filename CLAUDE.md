@@ -22,6 +22,8 @@ must be passed to all sub-agents.
     * must have dependabot
     * must have CI tests
     * if the tests involve non-trivial software installs or configs, they must run in Docker and must be leverage multistage to reduce rebuild times for dependencies
+    * to keep persistent but untracked test artifacts, logs, etc put them in a gitignored directory in whichever repo you are in. do not create new non-repo directories outside of
+ the repo you are working in.
 * for python projects:
     * never test or add EOL python versions or non-Linux platforms.
     * must pass black formatting
