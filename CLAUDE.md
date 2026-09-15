@@ -8,29 +8,35 @@ must be passed to all sub-agents.
 * you are judged on the algorithmic quality of the code you write
     * it is a competitive AI marketplace and you are not the only AI agent available. you will be replaced with another agent if you produce poor results.
     * prioritize compact, efficient and performant, algorithmic solutions reusing proven open source libraries where they exist rather than cranking out sheer code volume.
-    * if you are tuning constants or brute forcing/writing guessing code rather than reading code you already have available to solve problems, it means you don't understand the problem. 97% correct means you're 0% correct algorithmically. stop, step back, diagnose and design a better approach.
+    * if you are tuning constants, calibrating thresholds, or brute forcing/writing guessing code rather than reading code you already have available to solve problems, it means you don't understand the problem. 97% correct means you're 0% correct algorithmically. stop, step back, diagnose and design a better approach.
 
-* for all code:
-    * minimize narrative comments (especially comments with overly specific numbers or travel-diary style narrative). stick to compactly stated facts.
+* for your environment
+    * you are running in a container. you can run docker containers on your host (you are given your host's docker socket). your host may have a GPU. always identify your host and its resources at startup.
+    * you may have /scratch mounted which is an NFS share (or native filesystem if you identify you are running on the NFS server). unless you are running on the NFS server itself, try to avoid expensive file operations. If you need capacious local storage, use a directory under /local on the host you are running on. you are provided with a /tmp that is really a unique /scratch/tmp based path on your host so it persists across container/host combinations, but do not use it as a curated persistent space - it may be cleaned out without notice at any time.
+
+* narrative management
+    * minimize narrative comments (especially comments with overly specific numbers or travel-diary style narrative)
+    * never put time and a place narrative in code - e.g. no "I changed this because some metric went from X to Y"). stick to compactly stated durable facts. you can put narrative in commit comments.
+    * a top level README must never have narrative in it - it must be a compact summary of the project and how to use it, with references to more detailed docs in a docs subdirectory
+
+* agent management
     * use subagents to execute changes where possible, minimizing complexity and the need for design decisions so subagents are most likely to succeed on their own.
-    * commit and push to PRs, always watch PR status and fix broken tests and merge on green.
-    * always delete worktrees and branches, locally and remotely when they have been merged.
-* for public git repos:
-    * must not include any copyrighted material, but you can can retrieve and cache for fixtures.
+
+* code development
+    * never sidestep missing tools or libraries, install them. never do, "xyz was not installed here so I wrote new code to work around".
+    * keep your debugging tools re-usable. try not to write throwaway tools. try to find an existing suitable location on a project basis for your re-usable tools.
+    * test coverage must be > 85%, but never tautological
+    * C++
+        * must pass clang-format LLVM
+    * python
+        * write code that is numpy-first and numba compatible wherever possible, only fall back to generic python where you have to. make sure you account for numpy's own threading resources (OMP_NUM_THREADS=MKL_NUM_THREADS=OPENBLAS_NUM_THREADS=2 or better) when running parallel processes
+        * must pass black formatting and pylint (in particular no unused imports or vars) - test these things before commiting so you don't waste CI time failing trivial checks)
+        * must use xdist/auto for full test runs. only run the tests you need to first, save full runs for when you are getting ready to push.
+        * never test or add EOL python versions or non-Linux platforms.
+
 * if the project is a git repo:
-    * a top level README must never have narrative in it - it must be a compact summary of the project and how to use it, with references to more detailed docs in a docs subdirectory.
-    * must have dependabot
-    * must have CI tests
-    * if the tests involve non-trivial software installs or configs, they must run in Docker and must be leverage multistage to reduce rebuild times for dependencies
-    * to keep persistent but untracked test artifacts, logs, etc put them in a gitignored directory in whichever repo you are in. do not create new non-repo directories outside of
- the repo you are working in.
-* for python projects:
-    * never test or add EOL python versions or non-Linux platforms.
-    * must pass black formatting
-    * must pass pylint (in particular no unused imports or vars)
-    * must use xdist/auto
-    * test coverage must be > 85%
-    * write code that is numpy-first and numba compatible wherever possible, only fall back to generic python where you have to.
-    * when developing code, no script can take more than 60s CPU time (hard timeout). If needs longer refactor it for efficiency (e.g. use multiple processes or better algorithms). if it still takes too long ask for explicit authorization.
-
-
+    * if a public: must not include any copyrighted material, but you can can retrieve and cache for fixtures.
+    * use git worktrees and branches always, and delete them locally and remotely when you're done.
+    * commit and push to PRs, always watch PR status and fix broken tests and merge on green.
+    * must have dependabot and CI tests. if the tests involve non-trivial software installs or configs, they must run in Docker and must be leverage multistage to reduce rebuild times for dependencies
+    * to keep persistent but untracked test artifacts, logs, etc put them in a gitignored directory in whichever repo you are in. do not create new non-repo directories outside of the repo you are working in.

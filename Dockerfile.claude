@@ -36,7 +36,7 @@ RUN sed -i 's|https://|http://|g' \
     apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates curl gnupg git openssh-client \
         ripgrep less jq python3 python3-pip python3-venv python3-dev \
-        build-essential sudo
+        build-essential sudo time
 
 # Docker CLI only (talks to the bind-mounted host daemon socket).
 # Stays on https: download.docker.com (CloudFront) 301-redirects http to https,
