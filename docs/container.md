@@ -22,6 +22,12 @@ its own values.
 
 To run a repo under the `ansible` identity, invoke `run.sh` as that user.
 
+`sw` is the user's **primary** group in the container, and the default umask
+is `002` (`/etc/login.defs`, `/etc/profile.d/umask.sh`, and `entrypoint.sh`
+for the session itself, which is not a login shell). Anything a container
+writes to `/scratch` is therefore group-writable and owned by `sw`, so the
+other identity — and the other host — can write it too without a `chgrp`.
+
 `USER` is set to `CONTAINER_USER` (the name), not a numeric UID: a numeric
 value stops runc resolving supplementary groups (the `docker` group
 disappears from `id -Gn`), and hadolint flags it either way (DL3066, ignored

@@ -16,8 +16,11 @@ ARG BASE_IMAGE=ubuntu:24.04
 FROM ${BASE_IMAGE}
 
 # Defaults describe the shared "claude" identity (UID 3001, "sw" group);
-# run.sh overrides them with the invoking user's own values.
+# run.sh overrides them with the invoking user's own values. The group is the
+# host's "sw", shared by both identities, and is the user's *primary* group, so
+# everything written in the container is owned by it without a chgrp.
 ARG CONTAINER_USER=claude
+ARG CONTAINER_GROUP=sw
 ARG UID=3001
 ARG GID=3001
 # Must match the host's docker group so the mounted socket is writable.
@@ -64,11 +67,18 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
 # Ubuntu 24.04 ships a default "ubuntu" user at UID/GID 1000; remove it first
 # so it doesn't collide with the host-matched UID/GID below.
 RUN userdel -r ubuntu 2>/dev/null || true; \
-    if ! getent group "${GID}" >/dev/null; then groupadd -g "${GID}" "${CONTAINER_USER}"; fi \
+    if ! getent group "${GID}" >/dev/null; then groupadd -g "${GID}" "${CONTAINER_GROUP}"; fi \
     && useradd -l -m -u "${UID}" -g "${GID}" -d "${HOME_DIR}" -s /bin/bash "${CONTAINER_USER}" \
     && echo "${CONTAINER_USER} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/"${CONTAINER_USER}" \
     && chmod 0440 /etc/sudoers.d/"${CONTAINER_USER}" \
     && install -d -o "${UID}" -g "${GID}" -m 0700 "${HOME_DIR}/.claude"
+
+# Group-writable by default, so what one identity in the shared "sw" group
+# creates stays writable by the other. login.defs covers anything that goes
+# through PAM, profile.d covers login shells (docker exec -l); the entrypoint
+# sets it for the session itself, which is exec'd directly.
+RUN sed -i 's/^UMASK.*/UMASK\t\t002/' /etc/login.defs \
+    && echo 'umask 002' > /etc/profile.d/umask.sh
 
 # docker group with the host's GID, so the user can use the mounted socket.
 RUN if getent group "${DOCKER_GID}" >/dev/null; then \

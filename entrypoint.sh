@@ -6,6 +6,11 @@
 # ephemeral and never touch the host file.
 set -euo pipefail
 
+# claude is exec'd directly rather than from a login shell, so the image's
+# profile.d umask never runs: set it here for the session and everything it
+# spawns, so writes stay group-writable for the shared "sw" group.
+umask 002
+
 SEED="${HOME}/.claude.json.seed"
 DEST="${HOME}/.claude.json"
 
