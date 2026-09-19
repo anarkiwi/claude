@@ -48,13 +48,25 @@ sudo find /tmp -mindepth 1 -maxdepth 1 -exec rm -rf {} +
 
 # The venv is the one piece of host-persisted runtime state, on its own mount so
 # the wipe above leaves it alone: create it once and activate it, so installed
-# packages survive restarts.
+# packages survive restarts. The test is whether its interpreter actually runs,
+# which is the one condition that matters and covers every way the mount can
+# arrive unusable -- empty on a container name's first run, half-written by a
+# run that died mid-create, or left with a dangling symlink by a base image
+# whose python3 moved. --clear, so repairing a broken venv doesn't mean
+# building on top of its wreckage.
 VENV="/opt/venv"
-if [[ ! -x "${VENV}/bin/python" || ! -x "${VENV}/bin/activate" ]]; then
-    python3 -m venv "${VENV}"
+if ! "${VENV}/bin/python" -c '' 2>/dev/null; then
+    python3 -m venv --clear "${VENV}"
 fi
 # shellcheck disable=SC1091
 source "${VENV}/bin/activate"
+
+# The numeric stack is expected to be importable in every session. One
+# interpreter start decides, so a venv that already has it costs no index round
+# trip, and a single pip call resolves the three together when it doesn't.
+if ! python -c 'import numpy, scipy, sklearn' 2>/dev/null; then
+    pip install --quiet numpy scipy scikit-learn
+fi
 
 # Install userspace tooling for whichever host devices are visible in the
 # container (on a --privileged host config that is the host's whole /dev; see
