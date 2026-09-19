@@ -120,6 +120,20 @@ COPY --from=claude-dist --chown=${UID}:${GID} --chmod=0755 \
 RUN ln -sf "${HOME_DIR}/.local/share/claude/versions/${CLAUDE_VERSION}" \
         "${HOME_DIR}/.local/bin/claude"
 
+# ssh writes known_hosts by mkstemp+rename in the file's own directory, and
+# ~/.ssh is mounted read-only to keep the private keys out of reach, so any
+# host key the client wants to add, rotate (UpdateHostKeys is on by default) or
+# remove fails there with "mkstemp: Read-only file system" -- and a rename over
+# the bind-mounted file itself would be EBUSY even if it did not. Write to a
+# known_hosts in the writable directory run.sh mounts alongside instead, and
+# keep the host's own file as a second, read-only source: the first name is
+# where ssh records, every name is where it looks up.
+USER root
+RUN printf '%s\n' \
+        'UserKnownHostsFile ~/.ssh/known_hosts.d/known_hosts ~/.ssh/known_hosts' \
+        > /etc/ssh/ssh_config.d/10-known-hosts.conf
+USER ${CONTAINER_USER}
+
 COPY --chmod=0755 entrypoint.sh /usr/local/bin/entrypoint.sh
 
 # PreToolUse guards, referenced by settings.json at these absolute paths and run
