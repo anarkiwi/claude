@@ -36,7 +36,7 @@ RUN sed -i 's|https://|http://|g' \
     apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates curl gnupg git openssh-client \
         ripgrep less jq python3 python3-pip python3-venv python3-dev \
-        build-essential sudo
+        build-essential sudo time black clang-format
 
 # Docker CLI only (talks to the bind-mounted host daemon socket).
 # Stays on https: download.docker.com (CloudFront) 301-redirects http to https,
@@ -99,9 +99,11 @@ RUN ln -sf "${HOME_DIR}/.local/share/claude/versions/${CLAUDE_VERSION}" \
 
 COPY --chmod=0755 entrypoint.sh /usr/local/bin/entrypoint.sh
 
-# PreToolUse guard: denies Python writes with excess comment volume
-# (settings.json references it by this absolute path). Runs on the system python3.
+# PreToolUse guards, referenced by settings.json at these absolute paths and run
+# on the system python3: excess comment volume on Python writes, and unformatted
+# content on git commit (black and clang-format, installed above).
 COPY --chmod=0755 hooks/min_comments.py /usr/local/bin/min-comments-hook
+COPY --chmod=0755 hooks/format_check.py /usr/local/bin/format-check-hook
 
 # Canonical shared settings (auto permission mode, allow list, guard hooks);
 # the entrypoint overlays these on the host seed, so they apply without host

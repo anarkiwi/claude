@@ -37,6 +37,15 @@
             "command": "/usr/local/bin/min-comments-hook"
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/local/bin/format-check-hook"
+          }
+        ]
       }
     ]
   },

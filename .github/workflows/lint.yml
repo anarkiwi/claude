@@ -31,7 +31,10 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - run: pip install pytest pytest-xdist pytest-cov black pylint
+      # black and clang-format come from apt, as they do in the image, so the
+      # commit guard and CI agree on formatting.
+      - run: sudo apt-get update && sudo apt-get install -y black clang-format
+      - run: pip install pytest pytest-xdist pytest-cov pylint
       - run: black --check .
-      - run: pylint min_comments.py test_min_comments.py
-      - run: pytest -n auto --cov=min_comments --cov-fail-under=85
+      - run: pylint ./*.py
+      - run: pytest -n auto --cov=min_comments --cov=format_check --cov-fail-under=85

@@ -45,7 +45,7 @@ sudo find /tmp -mindepth 1 -maxdepth 1 -exec rm -rf {} +
 # the wipe above leaves it alone: create it once and activate it, so installed
 # packages survive restarts.
 VENV="/opt/venv"
-if [[ ! -x "${VENV}/bin/python" ]]; then
+if [[ ! -x "${VENV}/bin/python" || ! -x "${VENV}/bin/activate" ]]; then
     python3 -m venv "${VENV}"
 fi
 # shellcheck disable=SC1091

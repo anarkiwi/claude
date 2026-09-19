@@ -28,11 +28,12 @@ See [docs/container.md](docs/container.md).
 ## Hooks
 
 `hooks/` holds PreToolUse guards wired into `settings.json` and installed into
-the image by the `Dockerfile.claude`. Each denies writes that violate a coding
-directive; run their tests with `cd hooks && pytest -n auto`.
+the image by the `Dockerfile.claude`. Each denies a tool call that would violate
+a coding directive; run their tests with `cd hooks && pytest -n auto`.
 
 | Hook | Blocks |
 | --- | --- |
 | `min_comments.py` | Python docstring descriptions over 3 lines (PEP 257, sections excluded), or consecutive comment lines |
+| `format_check.py` | `git commit` whose content fails `black` (Python) or `clang-format` (C/C++) |
 
 See [docs/hooks.md](docs/hooks.md).
