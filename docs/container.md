@@ -90,10 +90,15 @@ All host-side sources are the invoking identity's `$HOME`.
   the venv there once and reuses it across restarts, recreating it (`--clear`)
   whenever `/opt/venv/bin/python` does not run — an empty mount on a container
   name's first run, a half-written venv, or a dangling symlink after a base
-  image change all land on the same test. It then ensures `numpy`, `scipy` and
-  `scikit-learn` are importable, installing them in one `pip` call only when
-  they are not, so a warm venv costs one interpreter start and no index round
-  trip.
+  image change all land on the same test. It then ensures `numpy`, `scipy`,
+  `scikit-learn`, `setuptools` and `wheel` are importable, installing them in
+  one `pip` call only when they are not, so a warm venv costs one interpreter
+  start and no index round trip. `setuptools` and `wheel` are explicit because
+  python3.12's `ensurepip` provides neither, leaving a fresh venv unable to
+  build an sdist; the image carries the rest of that path —
+  `build-essential`, `python3-dev`, `pkg-config` and `gfortran` — since those
+  are the pieces `pip` cannot supply for itself, while `cmake`, `ninja` and
+  `meson` are wheels a PEP 517 backend pulls in on its own.
 
 `.credentials.json` is the only read-write host state, so a fresh login sticks;
 config is read-only. Session state — conversations, history, memories — lives

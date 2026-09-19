@@ -61,11 +61,13 @@ fi
 # shellcheck disable=SC1091
 source "${VENV}/bin/activate"
 
-# The numeric stack is expected to be importable in every session. One
-# interpreter start decides, so a venv that already has it costs no index round
-# trip, and a single pip call resolves the three together when it doesn't.
-if ! python -c 'import numpy, scipy, sklearn' 2>/dev/null; then
-    pip install --quiet numpy scipy scikit-learn
+# The numeric stack, and a venv that can build an sdist: setuptools and wheel,
+# because python3.12's ensurepip supplies neither, next to the compiler,
+# headers and pkg-config the image carries. One interpreter start decides, so a
+# venv that already has them costs no index round trip, and a single pip call
+# resolves them together when it doesn't.
+if ! python -c 'import numpy, scipy, sklearn, setuptools, wheel' 2>/dev/null; then
+    pip install --quiet setuptools wheel numpy scipy scikit-learn
 fi
 
 # Install userspace tooling for whichever host devices are visible in the
