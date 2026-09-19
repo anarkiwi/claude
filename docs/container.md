@@ -78,8 +78,24 @@ All host-side sources are the invoking identity's `$HOME`.
   canonical `settings.json` (see [Settings](#settings)).
 - `/scratch`, the host docker socket, `/etc/pip.conf`, `~/.config/gh` and
   `~/.gitconfig` (ro).
-- `~/.ssh` (ro, with `known_hosts` remounted read-write so new host keys
-  persist).
+- `~/.ssh` (ro, so the private keys cannot be altered from a session), with
+  `~/.ssh/known_hosts.d` remounted read-write inside it. The client writes
+  host keys there rather than to `~/.ssh/known_hosts`: ssh updates a
+  known_hosts file by `mkstemp` and `rename` in the file's own directory, so
+  under a read-only `~/.ssh` every add, rotation (`UpdateHostKeys` is on by
+  default) and removal fails with `mkstemp: Read-only file system`, and a
+  rename over a bind-mounted file would be `EBUSY` even if the directory were
+  writable. The image's `/etc/ssh/ssh_config.d/10-known-hosts.conf` therefore
+  sets
+
+      UserKnownHostsFile ~/.ssh/known_hosts.d/known_hosts ~/.ssh/known_hosts
+
+  — ssh records into the first name and looks up in every name, so the host's
+  own file still answers for everything it already knows, read-only, while the
+  session's additions land in the writable directory and persist there. A
+  stale key in the host's own `known_hosts` is deliberately not fixable from a
+  container; drop it on the host. `ssh-keygen` does not read `ssh_config`, so
+  give it `-f ~/.ssh/known_hosts.d/known_hosts` explicitly.
 - `/tmp` — host-backed per container name under `/scratch/tmp/<name>`, so the
   client's working files (scratchpads, task output) can be read live without
   `docker exec`. The entrypoint empties it at startup, so a session never

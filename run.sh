@@ -233,12 +233,15 @@ for CONTAINER_DIR in "/scratch/tmp/${NAME}" "/scratch/tmp/venv/${NAME}"; do
     fi
 done
 
-# known_hosts must be writable so the container can record host keys it hasn't
-# seen; ~/.ssh itself stays read-only to protect the private keys. Both must
-# exist so docker bind-mounts them rather than materialising root-owned
-# directories (see the CREDS block below).
-install -d -m 0700 "${HOME}/.ssh"
-touch "${HOME}/.ssh/known_hosts"
+# The container must be able to record host keys it hasn't seen, while ~/.ssh
+# stays read-only to protect the private keys. It gets a writable *directory*
+# for that rather than a writable known_hosts file: ssh rewrites known_hosts by
+# mkstemp+rename in its directory, so a lone writable file cannot be updated,
+# only appended to. The image's ssh_config points the client at the file inside
+# it, with the host's own known_hosts kept as a read-only second source. Must
+# exist so docker bind-mounts it rather than materialising a root-owned
+# directory (see the CREDS block below).
+install -d -m 0700 "${HOME}/.ssh" "${HOME}/.ssh/known_hosts.d"
 
 # Claude Code persists its OAuth login to ~/.claude/.credentials.json, which
 # belongs to the identity: the OAuth refresh token rotates on refresh, so two
@@ -295,7 +298,7 @@ exec docker run --rm -it \
     "${SETTINGS_MOUNT[@]}" \
     -v "${CREDS}:${CREDS}" \
     -v "${HOME}/.ssh:${HOME}/.ssh:ro" \
-    -v "${HOME}/.ssh/known_hosts:${HOME}/.ssh/known_hosts:rw" \
+    -v "${HOME}/.ssh/known_hosts.d:${HOME}/.ssh/known_hosts.d:rw" \
     -v "${HOME}/.config/gh:${HOME}/.config/gh" \
     -v "${HOME}/.gitconfig:${HOME}/.gitconfig:ro" \
     -w "$(pwd)" \
