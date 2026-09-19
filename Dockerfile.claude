@@ -37,12 +37,21 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # build-essential, python3-dev, pkg-config and gfortran are what a python sdist
 # needs to compile and cannot get from the index itself; cmake, ninja and meson
 # are wheels, so a PEP 517 backend pulls those in for itself.
+#
+# The libusb/libudev/hidapi/libftdi headers build the USB end of that: pyusb,
+# pyftdi, hidapi and cyusb all bind to one of them, and the runtime libraries
+# they pull in are also what those bindings dlopen once built. They belong in
+# the image rather than beside the entrypoint's device-conditional packages,
+# since a package is built against the headers whether or not a device happens
+# to be attached -- and under --privileged the container's /dev is a snapshot
+# that misses anything plugged in later (see hosts/vek-x.sh).
 RUN sed -i 's|https://|http://|g' \
         /etc/apt/sources.list /etc/apt/sources.list.d/*.sources 2>/dev/null || true; \
     apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates curl gnupg git openssh-client \
         ripgrep less jq python3 python3-pip python3-venv python3-dev \
         python3-pygments \
+        libusb-1.0-0-dev libudev-dev libhidapi-dev libftdi1-dev \
         build-essential pkg-config gfortran sudo time black clang-format
 
 # Docker CLI only (talks to the bind-mounted host daemon socket).

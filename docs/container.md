@@ -96,9 +96,14 @@ All host-side sources are the invoking identity's `$HOME`.
   start and no index round trip. `setuptools` and `wheel` are explicit because
   python3.12's `ensurepip` provides neither, leaving a fresh venv unable to
   build an sdist; the image carries the rest of that path —
-  `build-essential`, `python3-dev`, `pkg-config` and `gfortran` — since those
+  `build-essential`, `python3-dev`, `pkg-config` and `gfortran`, plus
+  `libusb-1.0-0-dev`, `libudev-dev`, `libhidapi-dev` and `libftdi1-dev` for the
+  USB bindings (`pyusb`, `pyftdi`, `hidapi`) the bench rigs need — since those
   are the pieces `pip` cannot supply for itself, while `cmake`, `ninja` and
-  `meson` are wheels a PEP 517 backend pulls in on its own.
+  `meson` are wheels a PEP 517 backend pulls in on its own. The USB libraries
+  are image-wide rather than device-conditional like `usbutils` below: a
+  binding is built against the headers whether or not a device is attached,
+  and the container's `/dev` snapshot misses anything plugged in later.
 
 `.credentials.json` is the only read-write host state, so a fresh login sticks;
 config is read-only. Session state — conversations, history, memories — lives
