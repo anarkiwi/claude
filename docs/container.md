@@ -85,9 +85,15 @@ All host-side sources are the invoking identity's `$HOME`.
   `docker exec`. The entrypoint empties it at startup, so a session never
   inherits the previous one's scratch, and the last session's files stay
   readable until the next run.
-- `/opt/venv` — persisted per container name under `/scratch/venv/<name>`; a
-  separate mount so the `/tmp` wipe leaves it alone. The entrypoint creates the
-  venv there once and reuses it across restarts.
+- `/opt/venv` — persisted per container name under `/scratch/tmp/venv/<name>`;
+  a separate mount so the `/tmp` wipe leaves it alone. The entrypoint creates
+  the venv there once and reuses it across restarts, recreating it (`--clear`)
+  whenever `/opt/venv/bin/python` does not run — an empty mount on a container
+  name's first run, a half-written venv, or a dangling symlink after a base
+  image change all land on the same test. It then ensures `numpy`, `scipy` and
+  `scikit-learn` are importable, installing them in one `pip` call only when
+  they are not, so a warm venv costs one interpreter start and no index round
+  trip.
 
 `.credentials.json` is the only read-write host state, so a fresh login sticks;
 config is read-only. Session state — conversations, history, memories — lives
