@@ -16,7 +16,8 @@ one across containers invalidates it, see
 [docs/container.md](docs/container.md#credentials). Credentials are the only
 read-write host state; config is read-only, and session state (conversations,
 history, memories) is discarded on exit. The container's `/tmp` is host-backed
-at `/scratch/tmp/<name>` for live inspection, and emptied at startup. Permission mode defaults to
+at `/scratch/tmp/<name>` (named `claude-<host>-<dir>`) for live inspection, and
+emptied at startup apart from the venv in it. Permission mode defaults to
 `auto` from the image `settings.json`, which wins over the host's, and this
 repo's `CLAUDE.md` is installed as the container's global one. The
 `claude` binary is fetched into a version-keyed cache under
