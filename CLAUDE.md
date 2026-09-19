@@ -15,8 +15,8 @@ must be passed to all sub-agents.
     * you may have /scratch mounted which is an NFS share (or native filesystem if you identify you are running on the NFS server). unless you are running on the NFS server itself, try to avoid expensive file operations. If you need capacious local storage, use a directory under /local on the host you are running on. you are provided with a /tmp that is really a unique /scratch/tmp based path on your host so it persists across container/host combinations, but do not use it as a curated persistent space - it may be cleaned out without notice at any time.
 
 * narrative management
-    * minimize narrative comments (especially comments with overly specific numbers or travel-diary style narrative)
-    * never put time and a place narrative in code - e.g. no "I changed this because some metric went from X to Y"). stick to compactly stated durable facts. you can put narrative in commit comments.
+    * never write narrative comments in code (especially comments with overly specific numbers or travel-diary style narrative or contrasts with previous versions)
+    * never write time and a place measurements or observations in code - e.g. no "metric went from X to Y", "measured 30ms out of 120ms"). those belong in documentation or commits, and only put them in docs if measuring was the point of the doc. if you find such a measurement, take it out.
     * a top level README must never have narrative in it - it must be a compact summary of the project and how to use it, with references to more detailed docs in a docs subdirectory
 
 * agent management
