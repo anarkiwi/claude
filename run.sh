@@ -13,7 +13,8 @@
 # paths by the entrypoint, so the client recognises the existing install; the
 # global CLAUDE.md comes from this repo via the image; session state (conversations, history, memories) lives in the
 # container and is discarded when it exits. /tmp is host-backed so it can be
-# inspected from outside, but is emptied at startup rather than carried over.
+# inspected from outside, and is emptied at startup rather than carried over,
+# except for the venv that lives in it.
 set -euo pipefail
 
 # Resolve this script's own directory so the build always targets the claude
@@ -172,8 +173,10 @@ fi
 HOST="$(hostname -s)"
 REPO_NAME="$(basename "$(pwd)")"
 
-# The container and its Remote Control session share one name: <host>-<dir>.
-NAME="${HOST}-${REPO_NAME}"
+# The container and its Remote Control session share one name:
+# claude-<host>-<dir>. The prefix keeps these apart from everything else on a
+# host's docker ps, and from the containers a session itself starts.
+NAME="claude-${HOST}-${REPO_NAME}"
 
 # Resource caps, overridable per host (see below): --pids-limit guards
 # against runaway forks (relevant to the --init/zombie-reaping note further
@@ -218,20 +221,19 @@ if [[ ${#RUN_ARGS[@]} -eq 0 ]]; then
     RUN_ARGS=(--remote-control "${NAME}")
 fi
 
-# Host-side mounts for the container's /tmp and venv, one dir per container
-# name, created group-writable on first run. /tmp is on the host so the client's
-# working files (scratchpads, task output) can be read without exec'ing into the
-# container; the entrypoint empties it at startup, so a session never inherits
-# the previous one's state, and the last session's files stay readable until the
-# next run. The venv is mounted separately (/opt/venv) so that wipe leaves
-# installed packages alone.
-for CONTAINER_DIR in "/scratch/tmp/${NAME}" "/scratch/tmp/venv/${NAME}"; do
-    if [[ ! -d "${CONTAINER_DIR}" ]]; then
-        mkdir -p "${CONTAINER_DIR}"
-        chgrp sw "${CONTAINER_DIR}"
-        chmod g+w "${CONTAINER_DIR}"
-    fi
-done
+# Host-side mount for the container's /tmp, one dir per container name, created
+# group-writable on first run. It is on the host so the client's working files
+# (scratchpads, task output) can be read without exec'ing into the container;
+# the entrypoint empties it at startup, so a session never inherits the
+# previous one's state, and the last session's files stay readable until the
+# next run. The venv lives in there too, at /tmp/venv, which the entrypoint
+# skips when it empties the rest.
+CONTAINER_DIR="/scratch/tmp/${NAME}"
+if [[ ! -d "${CONTAINER_DIR}" ]]; then
+    mkdir -p "${CONTAINER_DIR}"
+    chgrp sw "${CONTAINER_DIR}"
+    chmod g+w "${CONTAINER_DIR}"
+fi
 
 # The container must be able to record host keys it hasn't seen, while ~/.ssh
 # stays read-only to protect the private keys. It gets a writable *directory*
@@ -289,7 +291,6 @@ exec docker run --rm -it \
     --memory "${MEMORY_LIMIT}" \
     "${HOST_DOCKER_ARGS[@]}" \
     -v "/scratch/tmp/${NAME}:/tmp" \
-    -v "/scratch/tmp/venv/${NAME}:/opt/venv" \
     -v /scratch:/scratch \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v /etc/pip.conf:/etc/pip.conf:ro \

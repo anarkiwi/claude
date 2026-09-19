@@ -98,13 +98,13 @@ All host-side sources are the invoking identity's `$HOME`.
   give it `-f ~/.ssh/known_hosts.d/known_hosts` explicitly.
 - `/tmp` — host-backed per container name under `/scratch/tmp/<name>`, so the
   client's working files (scratchpads, task output) can be read live without
-  `docker exec`. The entrypoint empties it at startup, so a session never
-  inherits the previous one's scratch, and the last session's files stay
-  readable until the next run.
-- `/opt/venv` — persisted per container name under `/scratch/tmp/venv/<name>`;
-  a separate mount so the `/tmp` wipe leaves it alone. The entrypoint creates
-  the venv there once and reuses it across restarts, recreating it (`--clear`)
-  whenever `/opt/venv/bin/python` does not run — an empty mount on a container
+  `docker exec`. The entrypoint empties it at startup, apart from `venv`
+  below, so a session never inherits the previous one's scratch, and the last
+  session's files stay readable until the next run.
+- `/tmp/venv` — the venv, inside the `/tmp` mount and the one name the
+  startup wipe skips. The entrypoint creates it once and reuses it across
+  restarts, recreating it (`--clear`)
+  whenever `/tmp/venv/bin/python` does not run — an empty mount on a container
   name's first run, a half-written venv, or a dangling symlink after a base
   image change all land on the same test. It then ensures `numpy`, `scipy`,
   `scikit-learn`, `setuptools` and `wheel` are importable, installing them in
@@ -124,7 +124,9 @@ All host-side sources are the invoking identity's `$HOME`.
 `.credentials.json` is the only read-write host state, so a fresh login sticks;
 config is read-only. Session state — conversations, history, memories — lives
 only in the container and is discarded on exit. With no args, `run.sh` starts a
-`--remote-control` session named `<host>-<dir>`.
+`--remote-control` session named `claude-<host>-<dir>`; the prefix keeps these
+containers apart from everything else in a host's `docker ps`, including the
+ones a session starts for itself.
 
 ## Settings
 

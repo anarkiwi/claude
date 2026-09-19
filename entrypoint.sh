@@ -42,19 +42,21 @@ printf '%s' "${BASE}" | jq --slurpfile s "${IMAGE_SETTINGS}" '
 # /tmp is a host mount so the client's working files are visible from outside
 # (see run.sh), which would otherwise carry a session's scratch into the next
 # one: empty it here instead, so only the live session's state is ever present.
-# mindepth 1 keeps the mount point itself; sudo covers root-owned leftovers
-# (e.g. from the apt-get below), which would otherwise fail under set -e.
-sudo find /tmp -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+# mindepth 1 keeps the mount point itself; the venv below is the one thing in
+# there meant to outlive a session, so it is excluded; sudo covers root-owned
+# leftovers (e.g. from the apt-get below), which would otherwise fail under
+# set -e.
+sudo find /tmp -mindepth 1 -maxdepth 1 ! -name venv -exec rm -rf {} +
 
-# The venv is the one piece of host-persisted runtime state, on its own mount so
-# the wipe above leaves it alone: create it once and activate it, so installed
-# packages survive restarts. The test is whether its interpreter actually runs,
+# The venv is the one piece of host-persisted runtime state, inside the /tmp
+# mount but exempt from the wipe above: create it once and activate it, so
+# installed packages survive restarts. The test is whether its interpreter runs,
 # which is the one condition that matters and covers every way the mount can
 # arrive unusable -- empty on a container name's first run, half-written by a
 # run that died mid-create, or left with a dangling symlink by a base image
 # whose python3 moved. --clear, so repairing a broken venv doesn't mean
 # building on top of its wreckage.
-VENV="/opt/venv"
+VENV="/tmp/venv"
 if ! "${VENV}/bin/python" -c '' 2>/dev/null; then
     python3 -m venv --clear "${VENV}"
 fi
