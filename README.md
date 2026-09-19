@@ -35,5 +35,6 @@ a coding directive; run their tests with `cd hooks && pytest -n auto`.
 | --- | --- |
 | `min_comments.py` | Python docstring descriptions over 3 lines (PEP 257, sections excluded), or consecutive comment lines |
 | `format_check.py` | `git commit` whose content fails `black` (Python) or `clang-format` (C/C++) |
+| `durable_comments.py` | `git commit` whose comments carry a measurement, a percentage, a date, or the story of an earlier version |
 
 See [docs/hooks.md](docs/hooks.md).
