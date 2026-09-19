@@ -58,13 +58,12 @@ if [[ -f "${HOME}/.claude/settings.json" ]]; then
     SETTINGS_MOUNT=(-v "${HOME}/.claude/settings.json:${HOME}/.claude/settings.json.seed:ro")
 fi
 
-# The claude binary (~300MB) is cached on the shared /scratch mount, keyed by
-# platform and version, and handed to the build as a named context rather than
-# downloaded inside it. Docker's layer cache is per-daemon, so every host used
-# to pay the full download for each new release; this cache is one filesystem
-# the whole fleet shares, so the first host to see a release fetches it and the
-# rest copy it over the LAN. A few older versions are kept to back the offline
-# fallback below, and pruned past that.
+# The claude binary is cached on the shared /scratch mount, keyed by platform
+# and version, and handed to the build as a named context rather than
+# downloaded inside it. Docker's layer cache is per-daemon; this cache is one
+# filesystem the whole fleet shares, so the first host to see a release fetches
+# it and the rest copy it over the LAN. A few older versions are kept to back
+# the offline fallback below, and pruned past that.
 CLAUDE_RELEASES=https://downloads.claude.ai/claude-code-releases
 case "$(uname -m)" in
 x86_64) CLAUDE_PLATFORM=linux-x64 ;;
@@ -78,7 +77,7 @@ CLAUDE_DIST=/scratch/tmp/claude-dist
 CLAUDE_CACHE="${CLAUDE_DIST}/${CLAUDE_PLATFORM}"
 # Cached releases to retain (see the prune below): enough that a host still on
 # an older image, or one that has lost the version check, finds something to
-# fall back to, without the cache growing by ~300MB a day forever.
+# fall back to, without the cache growing without bound.
 CLAUDE_KEEP=5
 for CACHE_DIR in "${CLAUDE_DIST}" "${CLAUDE_CACHE}"; do
     mkdir -p "${CACHE_DIR}"
@@ -148,10 +147,10 @@ if [[ ! -x "${CLAUDE_CACHE}/${CLAUDE_VERSION}/claude" ]]; then
             chmod 2775 "${STAGE}"
             mv "${STAGE}" "${CLAUDE_CACHE}/${CLAUDE_VERSION}"
 
-            # Releases ship most days at ~300MB each, so the cache needs a
-            # bound. Pruning here rather than every run means it costs nothing
-            # except when a new version actually lands, and the lock held over
-            # it keeps a prune from deleting a version another host is copying
+            # Each release is a whole binary, so the cache needs a bound.
+            # Pruning here rather than every run means it costs nothing except
+            # when a new version actually lands, and the lock held over it
+            # keeps a prune from deleting a version another host is copying
             # into a build right now.
             shopt -s nullglob
             CACHED=("${CLAUDE_CACHE}"/*/claude)

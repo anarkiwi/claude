@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3
 """PreToolUse guard denying Python writes with excess comment volume.
 Caps docstring descriptions per PEP 257 and bans consecutive comments."""
 
