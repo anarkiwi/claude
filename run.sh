@@ -202,6 +202,17 @@ if [[ -f "${HOST_CONFIG}" ]]; then
     source "${HOST_CONFIG}"
 fi
 
+# Docker has no notion of .gitignore, so derive the .dockerignore it does read
+# from git on every build: git does the matching, so the nested .gitignore
+# files and the rest of the exclude chain are honoured as written, and the two
+# can never drift apart. .git joins them -- no stage copies from it. A
+# checkout without git still builds, just with a fatter context.
+{
+    printf '.git\n'
+    git -C "${SCRIPT_DIR}" ls-files --others --ignored --exclude-standard \
+        --directory || true
+} > "${SCRIPT_DIR}/.dockerignore"
+
 # Always rebuild so the image tracks the latest claude and container identity.
 docker build \
     --build-arg "BASE_IMAGE=${BASE_IMAGE}" \
