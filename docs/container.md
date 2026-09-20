@@ -66,6 +66,15 @@ the newest five and prunes the rest — under the same lock, and only when a new
 version actually lands, so a prune can neither race a fetch nor delete a
 version another host is copying into a build.
 
+## Build context
+
+The build context is this repo, and `run.sh` regenerates `.dockerignore` from
+`git ls-files --others --ignored --exclude-standard --directory` before every
+build, so whatever `.gitignore` excludes -- including the nested ones, such as
+`hooks/.gitignore` -- never reaches the daemon. Generating it rather than
+keeping a second hand-maintained list is the point: the two cannot drift. `.git`
+is excluded alongside them, and the file itself is untracked.
+
 ## Mounts
 
 All host-side sources are the invoking identity's `$HOME`.
