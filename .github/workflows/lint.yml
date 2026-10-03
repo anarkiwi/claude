@@ -39,7 +39,7 @@ jobs:
       - run: pylint ./*.py
       - run: >-
           pytest -n auto --cov=min_comments --cov=format_check --cov=commits
-          --cov=durable_comments --cov-fail-under=85
+          --cov=durable_comments --cov=worktree_guard --cov-fail-under=85
 
   comments:
     runs-on: ubuntu-latest

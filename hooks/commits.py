@@ -56,7 +56,7 @@ def segments(command):
     yield current
 
 
-def _skip_git_options(segment, cwd):
+def skip_git_options(segment, cwd):
     """Return (repo_dir, index of the subcommand) for a git invocation."""
     repo, i = cwd, 1
     while i < len(segment):
@@ -76,7 +76,7 @@ def parse_commit(segment, cwd):
     """Return (repo_dir, all_flag, pathspec) if the segment is a git commit, else None."""
     if not segment or os.path.basename(segment[0]) != "git":
         return None
-    repo, i = _skip_git_options(segment, cwd)
+    repo, i = skip_git_options(segment, cwd)
     if i >= len(segment) or segment[i] != "commit":
         return None
     args, all_flag, pathspec, literal = segment[i + 1 :], False, [], False
@@ -177,8 +177,8 @@ def payload():
         return None
 
 
-def committed(event, wanted=_everything):
-    """Yield (repo_root, {path: bytes}) for every git commit the Bash payload would run."""
+def commands(event):
+    """Yield (cwd, argv) for each simple command in a Bash payload, following cd."""
     if not event or event.get("tool_name") != "Bash":
         return
     cwd = previous = event.get("cwd") or os.getcwd()
@@ -186,7 +186,13 @@ def committed(event, wanted=_everything):
         if segment and segment[0] == "cd":
             target = segment[1] if len(segment) > 1 else "~"
             cwd, previous = previous if target == "-" else resolve(cwd, target), cwd
-            continue
+        else:
+            yield cwd, segment
+
+
+def committed(event, wanted=_everything):
+    """Yield (repo_root, {path: bytes}) for every git commit the Bash payload would run."""
+    for cwd, segment in commands(event):
         commit = parse_commit(segment, cwd)
         if commit is None:
             continue
