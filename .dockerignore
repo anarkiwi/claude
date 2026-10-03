@@ -1,0 +1,8 @@
+# The build context is an allowlist of what Dockerfile.claude COPYs, so
+# worktrees, .git and caches never reach the daemon. Add a file here when a
+# COPY starts needing it.
+*
+!CLAUDE.md
+!entrypoint.sh
+!settings.json
+!hooks/*.py

@@ -68,12 +68,11 @@ version another host is copying into a build.
 
 ## Build context
 
-The build context is this repo, and `run.sh` regenerates `.dockerignore` from
-`git ls-files --others --ignored --exclude-standard --directory` before every
-build, so whatever `.gitignore` excludes -- including the nested ones, such as
-`hooks/.gitignore` -- never reaches the daemon. Generating it rather than
-keeping a second hand-maintained list is the point: the two cannot drift. `.git`
-is excluded alongside them, and the file itself is untracked.
+The build context is this repo, filtered by a tracked `.dockerignore` that
+excludes everything (`*`) and re-includes only what `Dockerfile.claude` copies:
+`CLAUDE.md`, `entrypoint.sh`, `settings.json` and `hooks/*.py`. Worktrees under
+`.claude/worktrees/`, `.git` and caches therefore never reach the daemon, with
+nothing generated at build time. A new `COPY` source needs a matching `!` entry.
 
 ## Mounts
 
