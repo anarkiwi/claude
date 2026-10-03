@@ -74,6 +74,35 @@ excludes everything (`*`) and re-includes only what `Dockerfile.claude` copies:
 `.claude/worktrees/`, `.git` and caches therefore never reach the daemon, with
 nothing generated at build time. A new `COPY` source needs a matching `!` entry.
 
+## Host keys
+
+Before each run, `run.sh` rebuilds `~/.ssh/fleet_known_hosts` with
+`fleet/known_hosts.py`, run in the image it has just built (which carries
+`python3-yaml`):
+
+- GitHub's keys, from the `ssh_keys` that `https://api.github.com/meta` publishes.
+- Every host in the `FLEET_GROUP` (default `claude`) of the ansible inventory at
+  `FLEET_INVENTORY`, child groups included, scanned with `ssh-keyscan` at
+  `<host>.<DNS_SEARCH>` and recorded under the short name, the FQDN and each
+  resolved address, so `ssh fogbank`, `ssh fogbank.finf` and `ssh 192.168.5.2`
+  all match.
+
+A host that does not answer keeps its entries from the previous file, and a run
+that fails outright keeps the previous file whole. All three variables can be
+set per host in `hosts/<hostname>.sh`.
+
+The file is mounted read-only as the system-wide `/etc/ssh/ssh_known_hosts`,
+which ssh only ever reads, and the image's
+`/etc/ssh/ssh_config.d/10-known-hosts.conf` sets
+
+    UserKnownHostsFile /dev/null
+    StrictHostKeyChecking yes
+    UpdateHostKeys no
+
+so no session can add, rotate or replace a trusted key, and a host outside the
+list fails at once with `Host key verification failed` instead of prompting. To
+reach a new machine, add it to the inventory group and restart the container.
+
 ## Mounts
 
 All host-side sources are the invoking identity's `$HOME`.
@@ -86,24 +115,9 @@ All host-side sources are the invoking identity's `$HOME`.
   canonical `settings.json` (see [Settings](#settings)).
 - `/scratch`, the host docker socket, `/etc/pip.conf`, `~/.config/gh` and
   `~/.gitconfig` (ro).
-- `~/.ssh` (ro, so the private keys cannot be altered from a session), with
-  `~/.ssh/known_hosts.d` remounted read-write inside it. The client writes
-  host keys there rather than to `~/.ssh/known_hosts`: ssh updates a
-  known_hosts file by `mkstemp` and `rename` in the file's own directory, so
-  under a read-only `~/.ssh` every add, rotation (`UpdateHostKeys` is on by
-  default) and removal fails with `mkstemp: Read-only file system`, and a
-  rename over a bind-mounted file would be `EBUSY` even if the directory were
-  writable. The image's `/etc/ssh/ssh_config.d/10-known-hosts.conf` therefore
-  sets
-
-      UserKnownHostsFile ~/.ssh/known_hosts.d/known_hosts ~/.ssh/known_hosts
-
-  — ssh records into the first name and looks up in every name, so the host's
-  own file still answers for everything it already knows, read-only, while the
-  session's additions land in the writable directory and persist there. A
-  stale key in the host's own `known_hosts` is deliberately not fixable from a
-  container; drop it on the host. `ssh-keygen` does not read `ssh_config`, so
-  give it `-f ~/.ssh/known_hosts.d/known_hosts` explicitly.
+- `~/.ssh` (ro, so the private keys cannot be altered from a session).
+- `~/.ssh/fleet_known_hosts` at `/etc/ssh/ssh_known_hosts` (ro) — the only
+  host keys the container trusts; see [Host keys](#host-keys).
 - `/tmp` — host-backed per container name under `/scratch/tmp/<name>`, so the
   client's working files (scratchpads, task output) can be read live without
   `docker exec`. The entrypoint empties it at startup, apart from `venv`

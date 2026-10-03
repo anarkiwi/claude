@@ -190,6 +190,11 @@ MEMORY_LIMIT="${MEMORY_LIMIT:-$(( (HOST_MEM_BYTES - 1073741824) / 1048576 ))m}"
 # The hosts' own resolv.conf carries no search domain for docker to inherit.
 DNS_SEARCH="${DNS_SEARCH:-finf}"
 
+# Ansible inventory and group naming the hosts whose keys the container trusts
+# (see the known_hosts block below).
+FLEET_INVENTORY="${FLEET_INVENTORY:-/scratch/claude/anarkiwi/infra/finf-ansible/inventory/hosts.yml}"
+FLEET_GROUP="${FLEET_GROUP:-claude}"
+
 # Base image, likewise overridable per host: a GPU host builds on an NVIDIA
 # CUDA image so the toolkit is present alongside the driver docker injects.
 BASE_IMAGE="${BASE_IMAGE:-ubuntu:24.04}"
@@ -239,15 +244,35 @@ if [[ ! -d "${CONTAINER_DIR}" ]]; then
     chmod g+w "${CONTAINER_DIR}"
 fi
 
-# The container must be able to record host keys it hasn't seen, while ~/.ssh
-# stays read-only to protect the private keys. It gets a writable *directory*
-# for that rather than a writable known_hosts file: ssh rewrites known_hosts by
-# mkstemp+rename in its directory, so a lone writable file cannot be updated,
-# only appended to. The image's ssh_config points the client at the file inside
-# it, with the host's own known_hosts kept as a read-only second source. Must
-# exist so docker bind-mounts it rather than materialising a root-owned
-# directory (see the CREDS block below).
-install -d -m 0700 "${HOME}/.ssh" "${HOME}/.ssh/known_hosts.d"
+# The container trusts host keys only from a known_hosts built here and mounted
+# read-only at /etc/ssh/ssh_known_hosts (see the image's ssh_config): GitHub's
+# published keys plus a scan of every host in the inventory's FLEET_GROUP, so
+# "ssh fogbank" works and nothing in the session can change what is trusted.
+# The tool runs in the image just built, which carries its YAML parser, and
+# falls back to the previous file for any host that does not answer. A failed
+# run keeps the previous file whole.
+FLEET_KNOWN_HOSTS="${HOME}/.ssh/fleet_known_hosts"
+if [[ -r "${FLEET_INVENTORY}" ]]; then
+    install -d -m 0700 "${HOME}/.ssh"
+    touch "${FLEET_KNOWN_HOSTS}"
+    if docker run --rm -i --entrypoint python3 \
+        -v "${FLEET_INVENTORY}:/fleet/inventory.yml:ro" \
+        -v "${FLEET_KNOWN_HOSTS}:/fleet/previous:ro" \
+        "${IMAGE}" - /fleet/inventory.yml --group "${FLEET_GROUP}" \
+        --domain "${DNS_SEARCH}" --previous /fleet/previous \
+        < "${SCRIPT_DIR}/fleet/known_hosts.py" > "${FLEET_KNOWN_HOSTS}.new"; then
+        mv "${FLEET_KNOWN_HOSTS}.new" "${FLEET_KNOWN_HOSTS}"
+    else
+        rm -f "${FLEET_KNOWN_HOSTS}.new"
+        echo "?? fleet host key scan failed, keeping ${FLEET_KNOWN_HOSTS}" >&2
+    fi
+else
+    echo "?? ${FLEET_INVENTORY} unreadable, keeping ${FLEET_KNOWN_HOSTS}" >&2
+fi
+KNOWN_HOSTS_MOUNT=()
+if [[ -s "${FLEET_KNOWN_HOSTS}" ]]; then
+    KNOWN_HOSTS_MOUNT=(-v "${FLEET_KNOWN_HOSTS}:/etc/ssh/ssh_known_hosts:ro")
+fi
 
 # Claude Code persists its OAuth login to ~/.claude/.credentials.json, which
 # belongs to the identity: the OAuth refresh token rotates on refresh, so two
@@ -256,8 +281,8 @@ install -d -m 0700 "${HOME}/.ssh" "${HOME}/.ssh/known_hosts.d"
 #
 # The source must exist as a file BEFORE docker sees it: docker silently
 # materialises a missing bind-mount source as a root-owned DIRECTORY, which the
-# container can then never log in to. Same reasoning as the known_hosts touch
-# above and the -f guards on the seed mounts.
+# container can then never log in to. Same reasoning as the -f guards on the
+# seed mounts.
 CREDS="${HOME}/.claude/.credentials.json"
 # Clean up exactly that failure mode if an earlier run left one behind.
 # rmdir only succeeds on an empty directory, so a real credentials file (or a
@@ -304,7 +329,7 @@ exec docker run --rm -it \
     "${SETTINGS_MOUNT[@]}" \
     -v "${CREDS}:${CREDS}" \
     -v "${HOME}/.ssh:${HOME}/.ssh:ro" \
-    -v "${HOME}/.ssh/known_hosts.d:${HOME}/.ssh/known_hosts.d:rw" \
+    "${KNOWN_HOSTS_MOUNT[@]}" \
     -v "${HOME}/.config/gh:${HOME}/.config/gh" \
     -v "${HOME}/.gitconfig:${HOME}/.gitconfig:ro" \
     -w "$(pwd)" \
