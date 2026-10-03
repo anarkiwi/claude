@@ -24,6 +24,7 @@ must be passed to all sub-agents.
 
 * code development
     * never sidestep missing tools or libraries, install them. never do, "xyz was not installed here so I wrote new code to work around".
+    * You must include tqdm or like style logging so it is always clear and obvious how much progress has been made and how fast.
     * keep your debugging tools re-usable. try not to write throwaway tools. try to find an existing suitable location on a project basis for your re-usable tools.
     * test coverage must be > 85%, but never tautological
     * C++
