@@ -41,6 +41,21 @@ jobs:
           pytest -n auto --cov=min_comments --cov=format_check --cov=commits
           --cov=durable_comments --cov=worktree_guard --cov-fail-under=85
 
+  fleet:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: fleet
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install black pytest pytest-xdist pytest-cov pylint pyyaml
+      - run: black --check .
+      - run: pylint ./*.py
+      - run: pytest -n auto --cov=known_hosts --cov-fail-under=85
+
   comments:
     runs-on: ubuntu-latest
     steps:
