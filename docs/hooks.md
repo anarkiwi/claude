@@ -98,10 +98,30 @@ tracked tree (`.github/workflows/lint.yml`):
     python3 hooks/durable_comments.py $(git ls-files)           # exit 1 on a finding
     python3 hooks/durable_comments.py $(git ls-files) --list    # report, exit 0
 
+## worktree_guard.py
+
+Enforces that a git worktree lives inside the repo the session started in, so
+branches stay beside their checkout instead of scattering across the shared
+filesystem. Walks the `Bash` command with the same parsing as the commit guards
+(`cd`, `git -C`, `&&` chains) and finds each `git worktree add <path>` and
+`git worktree move <worktree> <new-path>`, skipping the options that take a
+value (`-b`, `-B`, `--reason`) and honouring `--`. The target is resolved the
+way git would -- against the cwd after any `-C` -- then through `realpath`, so
+neither `..` nor a symlink escapes.
+
+The boundary is the main worktree of the repo holding `CLAUDE_PROJECT_DIR` (the
+payload `cwd` when that is unset), so a session started in a linked worktree may
+still create siblings within the same repo. A session started outside any repo
+is unconstrained. The deny names each offending command and its target, and
+points at `.claude/worktrees/<branch>`, which must be gitignored -- this repo
+ignores `/.claude/worktrees/`.
+
 ## commits.py
 
-Shared parsing rather than a guard of its own: both commit-time guards import
-it. It walks the `Bash` command through `cd`, `git -C` and `&&` chains, works
+Shared parsing rather than a guard of its own: every `Bash` guard imports it.
+`commands()` walks the command through `cd` and `&&` chains, yielding each
+simple command with the cwd it runs in, and `skip_git_options()` finds a git
+subcommand past `-C` and the other global options. On top of those it walks the `Bash` command through `cd`, `git -C` and `&&` chains, works
 out which files each `git commit` in it would record — index content, or
 worktree content under `-a`/`--all` and a trailing pathspec — and returns them
 as bytes, along with the `deny` payload the guards emit. The image `COPY`s it to
@@ -112,6 +132,6 @@ directory is the script directory, so it is on `sys.path` when a guard runs.
 
     cd hooks
     pytest -n auto --cov=min_comments --cov=format_check --cov=commits \
-        --cov=durable_comments --cov-fail-under=85
+        --cov=durable_comments --cov=worktree_guard --cov-fail-under=85
 
 `black --check .` and `pylint` also run in CI (`.github/workflows/lint.yml`).

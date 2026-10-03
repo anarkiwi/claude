@@ -137,14 +137,15 @@ USER ${CONTAINER_USER}
 COPY --chmod=0755 entrypoint.sh /usr/local/bin/entrypoint.sh
 
 # PreToolUse guards, referenced by settings.json at these absolute paths and run
-# on the system python3: excess comment volume on Python writes, and unformatted
+# on the system python3: excess comment volume on Python writes, unformatted
 # content or a comment that will go stale on git commit (black, clang-format and
-# pygments, installed above). commits.py is the shared git commit parsing the two
-# commit guards import by module name, so it keeps its .py name beside them, in
+# pygments, installed above), and a git worktree outside the session's repo.
+# commits.py is the shared git command parsing the Bash guards import by module name, so it keeps its .py name beside them, in
 # their own directory on sys.path.
 COPY --chmod=0755 hooks/min_comments.py /usr/local/bin/min-comments-hook
 COPY --chmod=0755 hooks/format_check.py /usr/local/bin/format-check-hook
 COPY --chmod=0755 hooks/durable_comments.py /usr/local/bin/durable-comments-hook
+COPY --chmod=0755 hooks/worktree_guard.py /usr/local/bin/worktree-guard-hook
 COPY --chmod=0644 hooks/commits.py /usr/local/bin/commits.py
 
 # Canonical shared settings (auto permission mode, allow list, guard hooks);
