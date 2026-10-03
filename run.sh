@@ -186,6 +186,10 @@ PIDS_LIMIT="${PIDS_LIMIT:-2048}"
 HOST_MEM_BYTES="$(free -b | awk '/^Mem:/{print $2}')"
 MEMORY_LIMIT="${MEMORY_LIMIT:-$(( (HOST_MEM_BYTES - 1073741824) / 1048576 ))m}"
 
+# Search domain for short names, so "ssh fogbank" resolves to fogbank.finf.
+# The hosts' own resolv.conf carries no search domain for docker to inherit.
+DNS_SEARCH="${DNS_SEARCH:-finf}"
+
 # Base image, likewise overridable per host: a GPU host builds on an NVIDIA
 # CUDA image so the toolkit is present alongside the driver docker injects.
 BASE_IMAGE="${BASE_IMAGE:-ubuntu:24.04}"
@@ -300,6 +304,7 @@ exec docker run --rm -it \
     --init \
     --pids-limit "${PIDS_LIMIT}" \
     --memory "${MEMORY_LIMIT}" \
+    --dns-search "${DNS_SEARCH}" \
     "${HOST_DOCKER_ARGS[@]}" \
     -v "/scratch/tmp/${NAME}:/tmp" \
     -v /scratch:/scratch \
