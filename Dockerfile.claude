@@ -120,12 +120,15 @@ COPY --from=claude-dist --chown=${UID}:${GID} --chmod=0755 \
 RUN ln -sf "${HOME_DIR}/.local/share/claude/versions/${CLAUDE_VERSION}" \
         "${HOME_DIR}/.local/bin/claude"
 
-# Host keys are trusted only from /etc/ssh/ssh_known_hosts, which run.sh builds
-# from GitHub's published keys and a scan of the inventory's fleet and mounts
-# read-only. No user file means nothing in the session can add or replace a key,
+# Host keys are trusted only from /etc/ssh/fleet/known_hosts: GitHub's published
+# keys and a scan of the ansible inventory, kept current by run.sh in a host
+# directory mounted read-only, beside the ssh_config that routes each inventory
+# name. No user file means nothing in the session can add or replace a key,
 # and strict checking makes an unlisted host fail at once rather than prompt.
 USER root
 RUN printf '%s\n' \
+        'Include /etc/ssh/fleet/ssh_config' \
+        'GlobalKnownHostsFile /etc/ssh/fleet/known_hosts' \
         'UserKnownHostsFile /dev/null' \
         'StrictHostKeyChecking yes' \
         'UpdateHostKeys no' \
