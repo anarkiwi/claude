@@ -24,8 +24,9 @@ repo's `CLAUDE.md` is installed as the container's global one. The
 `/scratch/tmp/claude-dist`, shared by every host, so a release is downloaded
 once for the fleet. Host-specific extras (`--privileged`, `--gpus`, a CUDA
 base image) are opt-in via `hosts/<hostname>.sh`. ssh trusts only a read-only
-known_hosts of GitHub and the ansible inventory's `claude` group, rebuilt by
-`fleet/known_hosts.py` on every run, so `ssh <host>` works without prompts.
+known_hosts of GitHub and the ansible inventory's ssh hosts, with a matching
+ssh_config, both rebuilt by `fleet/known_hosts.py` on every run, so
+`ssh <host>` works without prompts.
 See [docs/container.md](docs/container.md).
 
 ## Hooks

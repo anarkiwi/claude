@@ -190,10 +190,11 @@ MEMORY_LIMIT="${MEMORY_LIMIT:-$(( (HOST_MEM_BYTES - 1073741824) / 1048576 ))m}"
 # The hosts' own resolv.conf carries no search domain for docker to inherit.
 DNS_SEARCH="${DNS_SEARCH:-finf}"
 
-# Ansible inventory and group naming the hosts whose keys the container trusts
-# (see the known_hosts block below).
+# Ansible inventory, beside its group_vars and host_vars, and the group of it
+# whose ssh hosts the container trusts and can reach by name (see the host keys
+# block below).
 FLEET_INVENTORY="${FLEET_INVENTORY:-/scratch/claude/anarkiwi/infra/finf-ansible/inventory/hosts.yml}"
-FLEET_GROUP="${FLEET_GROUP:-claude}"
+FLEET_GROUP="${FLEET_GROUP:-all}"
 
 # Base image, likewise overridable per host: a GPU host builds on an NVIDIA
 # CUDA image so the toolkit is present alongside the driver docker injects.
@@ -246,32 +247,40 @@ fi
 
 # The container trusts host keys only from a known_hosts built here and mounted
 # read-only at /etc/ssh/ssh_known_hosts (see the image's ssh_config): GitHub's
-# published keys plus a scan of every host in the inventory's FLEET_GROUP, so
-# "ssh fogbank" works and nothing in the session can change what is trusted.
-# The tool runs in the image just built, which carries its YAML parser, and
-# falls back to the previous file for any host that does not answer. A failed
-# run keeps the previous file whole.
-FLEET_KNOWN_HOSTS="${HOME}/.ssh/fleet_known_hosts"
+# published keys plus a scan of every ssh host in the inventory's FLEET_GROUP,
+# at the address and port ansible resolves for it. A generated ssh_config,
+# mounted read-only beside the image's, sends each inventory name to that same
+# address and port, so "ssh numbers" works as "ssh fogbank" does and nothing in
+# the session can change what is trusted. The tool runs in the image just
+# built, which carries its YAML parser; it falls back to the previous entries
+# for any host that does not answer, and a failed run keeps both files whole.
+FLEET_DIR="${HOME}/.ssh/fleet"
 if [[ -r "${FLEET_INVENTORY}" ]]; then
-    install -d -m 0700 "${HOME}/.ssh"
-    touch "${FLEET_KNOWN_HOSTS}"
+    install -d -m 0700 "${HOME}/.ssh" "${FLEET_DIR}"
+    INVENTORY_DIR="$(dirname "${FLEET_INVENTORY}")"
     if docker run --rm -i --entrypoint python3 \
-        -v "${FLEET_INVENTORY}:/fleet/inventory.yml:ro" \
-        -v "${FLEET_KNOWN_HOSTS}:/fleet/previous:ro" \
-        "${IMAGE}" - /fleet/inventory.yml --group "${FLEET_GROUP}" \
-        --domain "${DNS_SEARCH}" --previous /fleet/previous \
-        < "${SCRIPT_DIR}/fleet/known_hosts.py" > "${FLEET_KNOWN_HOSTS}.new"; then
-        mv "${FLEET_KNOWN_HOSTS}.new" "${FLEET_KNOWN_HOSTS}"
+        --dns-search "${DNS_SEARCH}" \
+        -v "${INVENTORY_DIR}:/fleet/inventory:ro" \
+        -v "${FLEET_DIR}:/fleet/out" \
+        "${IMAGE}" - "/fleet/inventory/$(basename "${FLEET_INVENTORY}")" \
+        --group "${FLEET_GROUP}" --domain "${DNS_SEARCH}" \
+        --previous /fleet/out/known_hosts --ssh-config /fleet/out/ssh_config.new \
+        < "${SCRIPT_DIR}/fleet/known_hosts.py" > "${FLEET_DIR}/known_hosts.new"; then
+        mv "${FLEET_DIR}/known_hosts.new" "${FLEET_DIR}/known_hosts"
+        mv "${FLEET_DIR}/ssh_config.new" "${FLEET_DIR}/ssh_config"
     else
-        rm -f "${FLEET_KNOWN_HOSTS}.new"
-        echo "?? fleet host key scan failed, keeping ${FLEET_KNOWN_HOSTS}" >&2
+        rm -f "${FLEET_DIR}/known_hosts.new" "${FLEET_DIR}/ssh_config.new"
+        echo "?? fleet host key scan failed, keeping ${FLEET_DIR}" >&2
     fi
 else
-    echo "?? ${FLEET_INVENTORY} unreadable, keeping ${FLEET_KNOWN_HOSTS}" >&2
+    echo "?? ${FLEET_INVENTORY} unreadable, keeping ${FLEET_DIR}" >&2
 fi
-KNOWN_HOSTS_MOUNT=()
-if [[ -s "${FLEET_KNOWN_HOSTS}" ]]; then
-    KNOWN_HOSTS_MOUNT=(-v "${FLEET_KNOWN_HOSTS}:/etc/ssh/ssh_known_hosts:ro")
+FLEET_MOUNTS=()
+if [[ -s "${FLEET_DIR}/known_hosts" ]]; then
+    FLEET_MOUNTS+=(-v "${FLEET_DIR}/known_hosts:/etc/ssh/ssh_known_hosts:ro")
+fi
+if [[ -s "${FLEET_DIR}/ssh_config" ]]; then
+    FLEET_MOUNTS+=(-v "${FLEET_DIR}/ssh_config:/etc/ssh/ssh_config.d/20-fleet.conf:ro")
 fi
 
 # Claude Code persists its OAuth login to ~/.claude/.credentials.json, which
@@ -329,7 +338,7 @@ exec docker run --rm -it \
     "${SETTINGS_MOUNT[@]}" \
     -v "${CREDS}:${CREDS}" \
     -v "${HOME}/.ssh:${HOME}/.ssh:ro" \
-    "${KNOWN_HOSTS_MOUNT[@]}" \
+    "${FLEET_MOUNTS[@]}" \
     -v "${HOME}/.config/gh:${HOME}/.config/gh" \
     -v "${HOME}/.gitconfig:${HOME}/.gitconfig:ro" \
     -w "$(pwd)" \
