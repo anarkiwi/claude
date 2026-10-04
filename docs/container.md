@@ -76,23 +76,34 @@ nothing generated at build time. A new `COPY` source needs a matching `!` entry.
 
 ## Host keys
 
-Before each run, `run.sh` rebuilds `~/.ssh/fleet_known_hosts` with
-`fleet/known_hosts.py`, run in the image it has just built (which carries
-`python3-yaml`):
+Before each run, `run.sh` rebuilds `~/.ssh/fleet/known_hosts` and
+`~/.ssh/fleet/ssh_config` with `fleet/known_hosts.py`, run in the image it has
+just built (which carries `python3-yaml`):
 
 - GitHub's keys, from the `ssh_keys` that `https://api.github.com/meta` publishes.
-- Every host in the `FLEET_GROUP` (default `claude`) of the ansible inventory at
-  `FLEET_INVENTORY`, child groups included, scanned with `ssh-keyscan` at
-  `<host>.<DNS_SEARCH>` and recorded under the short name, the FQDN and each
-  resolved address, so `ssh fogbank`, `ssh fogbank.finf` and `ssh 192.168.5.2`
-  all match.
+- Every ssh host in the `FLEET_GROUP` (default `all`) of the ansible inventory
+  at `FLEET_INVENTORY`. Each host's `ansible_connection`, `ansible_host`,
+  `ansible_host_fallbacks` and `ansible_port` are merged as ansible merges them
+  -- `group_vars` by group depth then name, inline inventory vars, `host_vars`
+  -- reading files and directories alike, skipping vault-encrypted files,
+  `!vault` values and templated ones. Hosts whose connection is not ssh-based
+  (`local`, for instance) are left out. Each remaining host is scanned with
+  `ssh-keyscan` at its `ansible_host` and fallbacks (or `<host>.<DNS_SEARCH>`
+  without one) on its port, and recorded under the inventory name, every
+  address, each resolved IP, and `<host>.<DNS_SEARCH>` where that resolves to
+  the same machine. A non-22 port is written `[name]:port`, as ssh looks it up.
+
+`ssh_config` holds a `Host` block per inventory name whose `ansible_host` or
+port differs from what ssh would use by default, so `ssh numbers` and
+`ssh numbers.vandervecken.com` reach port 2222 exactly as ansible does.
 
 A host that does not answer keeps its entries from the previous file, and a run
-that fails outright keeps the previous file whole. All three variables can be
-set per host in `hosts/<hostname>.sh`.
+that fails outright keeps both files whole. All three variables can be set per
+host in `hosts/<hostname>.sh`.
 
-The file is mounted read-only as the system-wide `/etc/ssh/ssh_known_hosts`,
-which ssh only ever reads, and the image's
+`known_hosts` is mounted read-only as the system-wide `/etc/ssh/ssh_known_hosts`,
+which ssh only ever reads, and `ssh_config` as
+`/etc/ssh/ssh_config.d/20-fleet.conf`. The image's
 `/etc/ssh/ssh_config.d/10-known-hosts.conf` sets
 
     UserKnownHostsFile /dev/null
@@ -101,7 +112,7 @@ which ssh only ever reads, and the image's
 
 so no session can add, rotate or replace a trusted key, and a host outside the
 list fails at once with `Host key verification failed` instead of prompting. To
-reach a new machine, add it to the inventory group and restart the container.
+reach a new machine, add it to the inventory and restart the container.
 
 ## Mounts
 
@@ -116,8 +127,10 @@ All host-side sources are the invoking identity's `$HOME`.
 - `/scratch`, the host docker socket, `/etc/pip.conf`, `~/.config/gh` and
   `~/.gitconfig` (ro).
 - `~/.ssh` (ro, so the private keys cannot be altered from a session).
-- `~/.ssh/fleet_known_hosts` at `/etc/ssh/ssh_known_hosts` (ro) — the only
-  host keys the container trusts; see [Host keys](#host-keys).
+- `~/.ssh/fleet/known_hosts` at `/etc/ssh/ssh_known_hosts` and
+  `~/.ssh/fleet/ssh_config` at `/etc/ssh/ssh_config.d/20-fleet.conf` (ro) — the
+  only host keys the container trusts, and where each inventory name connects;
+  see [Host keys](#host-keys).
 - `/tmp` — host-backed per container name under `/scratch/tmp/<name>`, so the
   client's working files (scratchpads, task output) can be read live without
   `docker exec`. The entrypoint empties it at startup, apart from `venv`
