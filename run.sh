@@ -245,42 +245,36 @@ if [[ ! -d "${CONTAINER_DIR}" ]]; then
     chmod g+w "${CONTAINER_DIR}"
 fi
 
-# The container trusts host keys only from a known_hosts built here and mounted
-# read-only at /etc/ssh/ssh_known_hosts (see the image's ssh_config): GitHub's
+# The container trusts host keys only from FLEET_DIR, mounted read-only at
+# /etc/ssh/fleet (see the image's ssh_config): a known_hosts of GitHub's
 # published keys plus a scan of every ssh host in the inventory's FLEET_GROUP,
-# at the address and port ansible resolves for it. A generated ssh_config,
-# mounted read-only beside the image's, sends each inventory name to that same
-# address and port, so "ssh numbers" works as "ssh fogbank" does and nothing in
-# the session can change what is trusted. The tool runs in the image just
-# built, which carries its YAML parser; it falls back to the previous entries
-# for any host that does not answer, and a failed run keeps both files whole.
+# at the address and port ansible resolves for it, and an ssh_config sending
+# each inventory name to that same address, port and options -- so "ssh
+# numbers" works as "ssh fogbank" does, and nothing in the session can change
+# what is trusted. The scan runs in the image just built, which carries its
+# YAML parser, and replaces each file by rename; with the directory, not the
+# files, mounted, the session picks up a refresh as soon as it lands. So only
+# the first run, with nothing to fall back on, waits for it; later runs refresh
+# in the background, logging to FLEET_DIR/scan.log. A host that does not answer
+# keeps its previous entries.
 FLEET_DIR="${HOME}/.ssh/fleet"
+install -d -m 0700 "${HOME}/.ssh"
+install -d -m 0700 "${FLEET_DIR}"
 if [[ -r "${FLEET_INVENTORY}" ]]; then
-    install -d -m 0700 "${HOME}/.ssh" "${FLEET_DIR}"
-    INVENTORY_DIR="$(dirname "${FLEET_INVENTORY}")"
-    if docker run --rm -i --entrypoint python3 \
-        --dns-search "${DNS_SEARCH}" \
-        -v "${INVENTORY_DIR}:/fleet/inventory:ro" \
-        -v "${FLEET_DIR}:/fleet/out" \
-        "${IMAGE}" - "/fleet/inventory/$(basename "${FLEET_INVENTORY}")" \
-        --group "${FLEET_GROUP}" --domain "${DNS_SEARCH}" \
-        --previous /fleet/out/known_hosts --ssh-config /fleet/out/ssh_config.new \
-        < "${SCRIPT_DIR}/fleet/known_hosts.py" > "${FLEET_DIR}/known_hosts.new"; then
-        mv "${FLEET_DIR}/known_hosts.new" "${FLEET_DIR}/known_hosts"
-        mv "${FLEET_DIR}/ssh_config.new" "${FLEET_DIR}/ssh_config"
+    SCAN=(docker run --rm --entrypoint python3 --dns-search "${DNS_SEARCH}"
+        -v "$(dirname "${FLEET_INVENTORY}"):/fleet/inventory:ro"
+        -v "${SCRIPT_DIR}/fleet/known_hosts.py:/fleet/known_hosts.py:ro"
+        -v "${FLEET_DIR}:/fleet/out"
+        "${IMAGE}" /fleet/known_hosts.py
+        "/fleet/inventory/$(basename "${FLEET_INVENTORY}")" /fleet/out
+        --group "${FLEET_GROUP}" --domain "${DNS_SEARCH}")
+    if [[ -s "${FLEET_DIR}/known_hosts" ]]; then
+        setsid "${SCAN[@]}" </dev/null >"${FLEET_DIR}/scan.log" 2>&1 &
     else
-        rm -f "${FLEET_DIR}/known_hosts.new" "${FLEET_DIR}/ssh_config.new"
-        echo "?? fleet host key scan failed, keeping ${FLEET_DIR}" >&2
+        "${SCAN[@]}" </dev/null || echo "?? fleet host key scan failed" >&2
     fi
 else
     echo "?? ${FLEET_INVENTORY} unreadable, keeping ${FLEET_DIR}" >&2
-fi
-FLEET_MOUNTS=()
-if [[ -s "${FLEET_DIR}/known_hosts" ]]; then
-    FLEET_MOUNTS+=(-v "${FLEET_DIR}/known_hosts:/etc/ssh/ssh_known_hosts:ro")
-fi
-if [[ -s "${FLEET_DIR}/ssh_config" ]]; then
-    FLEET_MOUNTS+=(-v "${FLEET_DIR}/ssh_config:/etc/ssh/ssh_config.d/20-fleet.conf:ro")
 fi
 
 # Claude Code persists its OAuth login to ~/.claude/.credentials.json, which
@@ -338,7 +332,7 @@ exec docker run --rm -it \
     "${SETTINGS_MOUNT[@]}" \
     -v "${CREDS}:${CREDS}" \
     -v "${HOME}/.ssh:${HOME}/.ssh:ro" \
-    "${FLEET_MOUNTS[@]}" \
+    -v "${FLEET_DIR}:/etc/ssh/fleet:ro" \
     -v "${HOME}/.config/gh:${HOME}/.config/gh" \
     -v "${HOME}/.gitconfig:${HOME}/.gitconfig:ro" \
     -w "$(pwd)" \

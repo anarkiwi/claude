@@ -76,7 +76,7 @@ nothing generated at build time. A new `COPY` source needs a matching `!` entry.
 
 ## Host keys
 
-Before each run, `run.sh` rebuilds `~/.ssh/fleet/known_hosts` and
+On each run, `run.sh` refreshes `~/.ssh/fleet/known_hosts` and
 `~/.ssh/fleet/ssh_config` with `fleet/known_hosts.py`, run in the image it has
 just built (which carries `python3-yaml`):
 
@@ -97,22 +97,29 @@ just built (which carries `python3-yaml`):
 port differs from what ssh would use by default, so `ssh numbers` and
 `ssh numbers.vandervecken.com` reach port 2222 exactly as ansible does.
 
-A host that does not answer keeps its entries from the previous file, and a run
-that fails outright keeps both files whole. All three variables can be set per
-host in `hosts/<hostname>.sh`.
+Every address is scanned by its own concurrent `ssh-keyscan`, so a refresh takes
+as long as the slowest host -- in practice the 5 s timeout of one that never
+answers. A host that does not answer keeps its entries from the previous file,
+and each file is replaced by rename, so a failed run leaves the last good one in
+place. All three variables can be set per host in `hosts/<hostname>.sh`.
 
-`known_hosts` is mounted read-only as the system-wide `/etc/ssh/ssh_known_hosts`,
-which ssh only ever reads, and `ssh_config` as
-`/etc/ssh/ssh_config.d/20-fleet.conf`. The image's
-`/etc/ssh/ssh_config.d/10-known-hosts.conf` sets
+The directory, not the files, is mounted read-only at `/etc/ssh/fleet`, so a
+rename on the host is visible in a running session at once. That lets `run.sh`
+start the session without waiting: only the first run, with no `known_hosts` to
+fall back on, scans in the foreground; later runs refresh in the background,
+logging to `~/.ssh/fleet/scan.log`. The image's
+`/etc/ssh/ssh_config.d/10-known-hosts.conf` reads both and sets
 
+    Include /etc/ssh/fleet/ssh_config
+    GlobalKnownHostsFile /etc/ssh/fleet/known_hosts
     UserKnownHostsFile /dev/null
     StrictHostKeyChecking yes
     UpdateHostKeys no
 
-so no session can add, rotate or replace a trusted key, and a host outside the
-list fails at once with `Host key verification failed` instead of prompting. To
-reach a new machine, add it to the inventory and restart the container.
+ssh only ever reads a global known_hosts, so no session can add, rotate or
+replace a trusted key, and a host outside the list fails at once with
+`Host key verification failed` instead of prompting. To reach a new machine,
+add it to the inventory; the next run's refresh picks it up.
 
 ## Mounts
 
@@ -127,10 +134,8 @@ All host-side sources are the invoking identity's `$HOME`.
 - `/scratch`, the host docker socket, `/etc/pip.conf`, `~/.config/gh` and
   `~/.gitconfig` (ro).
 - `~/.ssh` (ro, so the private keys cannot be altered from a session).
-- `~/.ssh/fleet/known_hosts` at `/etc/ssh/ssh_known_hosts` and
-  `~/.ssh/fleet/ssh_config` at `/etc/ssh/ssh_config.d/20-fleet.conf` (ro) — the
-  only host keys the container trusts, and where each inventory name connects;
-  see [Host keys](#host-keys).
+- `~/.ssh/fleet` at `/etc/ssh/fleet` (ro) — the only host keys the container
+  trusts, and where each inventory name connects; see [Host keys](#host-keys).
 - `/tmp` — host-backed per container name under `/scratch/tmp/<name>`, so the
   client's working files (scratchpads, task output) can be read live without
   `docker exec`. The entrypoint empties it at startup, apart from `venv`

@@ -68,9 +68,10 @@ FILES = {
 }
 
 KEYSCAN = {
-    "22": "# banner\n192.168.5.2 ssh-ed25519 AAAAfog\n192.168.5.2 ssh-rsa AAAArsa\n"
-    "192.168.5.2 ssh-ed25519 AAAAfog\n192.168.4.49 ssh-ed25519 AAAAorin\nbad line\n",
-    "2222": "[numbers.example.com]:2222 ssh-ed25519 AAAAnum\n",
+    ("192.168.5.2", "22"): "# banner\n192.168.5.2 ssh-ed25519 AAAAfog\n"
+    "192.168.5.2 ssh-rsa AAAArsa\n192.168.5.2 ssh-ed25519 AAAAfog\nbad line\n",
+    ("192.168.4.49", "22"): "192.168.4.49 ssh-ed25519 AAAAorin\n",
+    ("numbers.example.com", "2222"): "[numbers.example.com]:2222 ssh-ed25519 AAAAnum\n",
 }
 
 RESOLVE = {
@@ -96,10 +97,22 @@ def inventory_fixture(tmp_path):
 def offline_fixture(monkeypatch):
     calls = []
 
-    def run(argv, **_):
-        calls.append(argv)
-        port = argv[argv.index("-p") + 1]
-        return subprocess.CompletedProcess(argv, 0, stdout=KEYSCAN.get(port, ""), stderr="")
+    class Popen:  # pylint: disable=too-few-public-methods
+        """ssh-keyscan stand-in answering from KEYSCAN."""
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+        def __init__(self, argv, **kwargs):
+            assert kwargs["stdout"] == subprocess.PIPE and kwargs["text"]
+            calls.append(argv)
+            self.stdout = KEYSCAN.get((argv[-1], argv[argv.index("-p") + 1]), "")
+
+        def communicate(self):
+            return self.stdout, None
 
     def getaddrinfo(host, *_, **__):
         if host not in RESOLVE:
@@ -110,7 +123,7 @@ def offline_fixture(monkeypatch):
         assert url == known_hosts.GITHUB_META and timeout == 5
         return io.BytesIO(json.dumps({"ssh_keys": ["ssh-ed25519 AAAAgh"]}).encode())
 
-    monkeypatch.setattr(known_hosts.subprocess, "run", run)
+    monkeypatch.setattr(known_hosts.subprocess, "Popen", Popen)
     monkeypatch.setattr(known_hosts.socket, "getaddrinfo", getaddrinfo)
     monkeypatch.setattr(known_hosts.urllib.request, "urlopen", urlopen)
     return calls
@@ -146,20 +159,23 @@ def test_empty_inventory(tmp_path):
     assert not known_hosts.ssh_hosts(path, "all")
 
 
-def test_keyscan_per_port(offline):
-    keys = known_hosts.keyscan(
-        [("192.168.5.2", 22), ("numbers.example.com", 2222), ("192.168.5.2", 22)], 3
-    )
-    assert keys == {
+def test_keyscan_scans_each_pair_once(offline):
+    pairs = [
+        ("192.168.5.2", 22),
+        ("numbers.example.com", 2222),
+        ("192.168.5.2", 22),
+        ("10.9.9.9", 22),
+    ]
+    assert known_hosts.keyscan(pairs, 3) == {
         ("192.168.5.2", 22): ["ssh-ed25519 AAAAfog", "ssh-rsa AAAArsa"],
-        ("192.168.4.49", 22): ["ssh-ed25519 AAAAorin"],
         ("numbers.example.com", 2222): ["ssh-ed25519 AAAAnum"],
     }
-    assert [call[:7] for call in offline] == [
-        ["ssh-keyscan", "-T", "3", "-p", "22", "-t", known_hosts.KEY_TYPES],
-        ["ssh-keyscan", "-T", "3", "-p", "2222", "-t", known_hosts.KEY_TYPES],
+    scan = ["ssh-keyscan", "-T", "3", "-p"]
+    assert offline == [
+        [*scan, "22", "-t", known_hosts.KEY_TYPES, "192.168.5.2"],
+        [*scan, "2222", "-t", known_hosts.KEY_TYPES, "numbers.example.com"],
+        [*scan, "22", "-t", known_hosts.KEY_TYPES, "10.9.9.9"],
     ]
-    assert offline[0][7:] == ["192.168.5.2"]
     assert not known_hosts.keyscan([], 3)
 
 
@@ -217,12 +233,12 @@ def test_entries_aliases(offline):
         ),
         "ghost": (["ghost", "ghost.finf"], []),
     }
-    assert "ghost.finf" in offline[0]
+    assert ["ghost.finf"] in [call[-1:] for call in offline]
 
 
 def test_entries_without_domain(offline):
     known_hosts.entries([Host("fogbank", None, [], 22)], "", 5)
-    assert offline[0][7:] == ["fogbank"]
+    assert [call[-1] for call in offline] == ["fogbank"]
 
 
 def test_render_falls_back_to_previous():
@@ -266,40 +282,49 @@ def test_ssh_config():
     assert known_hosts.ssh_config([]) == ""
 
 
+def test_replace_is_atomic_and_readable(tmp_path):
+    target = tmp_path / "known_hosts"
+    target.write_text("old\n")
+    known_hosts.replace(str(target), "new\n")
+    assert target.read_text() == "new\n"
+    assert target.stat().st_mode & 0o777 == 0o644
+    assert [path.name for path in tmp_path.iterdir()] == ["known_hosts"]
+
+
 @pytest.mark.usefixtures("offline")
 def test_main_end_to_end(inventory, tmp_path, capsys):
-    previous = tmp_path / "previous"
-    previous.write_text("[hovercraft]:2201 ssh-ed25519 AAAAold\nghost x STALE\n")
-    config = tmp_path / "ssh_config"
-    argv = [str(inventory), "--group", "claude", "--domain", ".finf.", "--previous", str(previous)]
-    assert known_hosts.main([*argv, "--ssh-config", str(config)]) == 0
-    out = capsys.readouterr()
-    assert out.out.splitlines() == [
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "known_hosts").write_text("[hovercraft]:2201 ssh-ed25519 AAAAold\nghost x STALE\n")
+    argv = [str(inventory), str(out), "--group", "claude", "--domain", ".finf."]
+    assert known_hosts.main(argv) == 0
+    err = capsys.readouterr().err
+    assert (out / "known_hosts").read_text().splitlines() == [
         "github.com ssh-ed25519 AAAAgh",
         "[hovercraft]:2201 ssh-ed25519 AAAAold",
     ]
-    assert "[3/4] hovercraft: 1 keys, kept previous" in out.err
-    assert "[2/4] fogbank: 0 keys, unreachable, no keys" in out.err
+    assert "[3/4] hovercraft: 1 keys, kept previous" in err
+    assert "[2/4] fogbank: 0 keys, unreachable, no keys" in err
     assert (
         "Host fogbank 192.168.5.2\n    HostName 192.168.5.2\n    Port 2200\n"
-        "    ProxyJump jump host\n" in config.read_text()
+        "    ProxyJump jump host\n" in (out / "ssh_config").read_text()
     )
 
 
 @pytest.mark.usefixtures("offline")
-def test_main_default_group_without_ssh_config(inventory, capsys):
-    assert known_hosts.main([str(inventory), "--domain", "finf"]) == 0
-    out = capsys.readouterr()
-    assert "github.com and 6 all hosts" in out.err
-    assert "[numbers]:2222,[numbers.example.com]:2222" in out.out
-    assert "fogbank,fogbank.finf,192.168.5.2 ssh-ed25519 AAAAfog" not in out.out
+def test_main_first_run_default_group(inventory, tmp_path, capsys):
+    assert known_hosts.main([str(inventory), str(tmp_path), "--domain", "finf"]) == 0
+    assert "github.com and 6 all hosts" in capsys.readouterr().err
+    known = (tmp_path / "known_hosts").read_text()
+    assert "[numbers]:2222,[numbers.example.com]:2222" in known
+    assert "AAAAfog" not in known
 
 
 def test_script_entrypoint(tmp_path):
     inventory = tmp_path / "hosts.yml"
     inventory.write_text("all: {}\n")
     proc = subprocess.run(
-        [sys.executable, known_hosts.__file__, str(inventory)],
+        [sys.executable, known_hosts.__file__, str(inventory), str(tmp_path)],
         capture_output=True,
         text=True,
         check=True,
@@ -307,3 +332,5 @@ def test_script_entrypoint(tmp_path):
         timeout=60,
     )
     assert "0 all hosts" in proc.stderr
+    assert (tmp_path / "known_hosts").read_text() == ""
+    assert (tmp_path / "ssh_config").read_text() == ""

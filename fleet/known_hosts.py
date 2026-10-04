@@ -6,12 +6,14 @@ and every address. A host that does not answer keeps its previous entries."""
 
 import argparse
 import collections
+import contextlib
 import json
 import os
 import shlex
 import socket
 import subprocess
 import sys
+import tempfile
 import urllib.request
 
 import yaml
@@ -188,24 +190,31 @@ def unbracket(token):
 
 
 def keyscan(pairs, timeout):
-    """Return {(target, port): sorted "type key" strings} for the pairs that answered."""
-    by_port = collections.defaultdict(list)
-    for target, port in dict.fromkeys(pairs):
-        by_port[port].append(target)
+    """Return {(target, port): sorted "type key" strings} for the pairs that answered.
+    Every pair is scanned at once, so the slowest host alone bounds the wait."""
     keys = {}
-    for port, names in sorted(by_port.items()):
-        proc = subprocess.run(
-            ["ssh-keyscan", "-T", str(timeout), "-p", str(port), "-t", KEY_TYPES, *names],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        for line in proc.stdout.splitlines():
-            fields = line.split()
-            if len(fields) == 3 and not line.startswith("#"):
-                key = (unbracket(fields[0]), port)
-                keys.setdefault(key, set()).add(f"{fields[1]} {fields[2]}")
-    return {target: sorted(found) for target, found in keys.items()}
+    with contextlib.ExitStack() as stack:
+        procs = {
+            (target, port): stack.enter_context(
+                subprocess.Popen(
+                    ["ssh-keyscan", "-T", str(timeout), "-p", str(port), "-t", KEY_TYPES, target],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.DEVNULL,
+                    text=True,
+                )
+            )
+            for target, port in dict.fromkeys(pairs)
+        }
+        for pair, proc in procs.items():
+            stdout, _ = proc.communicate()
+            found = {
+                f"{fields[1]} {fields[2]}"
+                for fields in (line.split() for line in stdout.splitlines())
+                if len(fields) == 3 and not fields[0].startswith("#")
+            }
+            if found:
+                keys[pair] = sorted(found)
+    return keys
 
 
 def github_keys(timeout, url=GITHUB_META):
@@ -277,26 +286,34 @@ def ssh_config(hosts):
     return "\n\n".join(blocks) + "\n" if blocks else ""
 
 
+def replace(path, text):
+    """Write text to path by rename, so a reader never sees a partial file."""
+    handle, temp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".tmp.")
+    with os.fdopen(handle, "w", encoding="utf-8") as out:
+        out.write(text)
+    os.chmod(temp, 0o644)
+    os.replace(temp, path)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("inventory", help="ansible YAML inventory, beside its *_vars dirs")
+    parser.add_argument("out", help="directory holding known_hosts and ssh_config")
     parser.add_argument("--group", default="all")
     parser.add_argument("--domain", default="")
-    parser.add_argument("--previous", default="", help="earlier output to fall back on")
-    parser.add_argument("--ssh-config", default="", help="also write Host blocks here")
     parser.add_argument("--timeout", type=int, default=5)
     args = parser.parse_args(argv)
     hosts = ssh_hosts(args.inventory, args.group)
     print(f">> host keys for {GITHUB} and {len(hosts)} {args.group} hosts", file=sys.stderr)
     found = entries(hosts, args.domain.strip("."), args.timeout)
-    previous = previous_entries(args.previous) if args.previous else {}
+    previous = previous_entries(os.path.join(args.out, "known_hosts"))
+    known = []
     for done, (name, lines, fresh) in enumerate(render(found, previous), 1):
         state = "fresh" if fresh else ("kept previous" if lines else "unreachable, no keys")
         print(f"   [{done}/{len(found)}] {name}: {len(lines)} keys, {state}", file=sys.stderr)
-        print("\n".join(lines), end="\n" if lines else "")
-    if args.ssh_config:
-        with open(args.ssh_config, "w", encoding="utf-8") as handle:
-            handle.write(ssh_config(hosts))
+        known += lines
+    replace(os.path.join(args.out, "ssh_config"), ssh_config(hosts))
+    replace(os.path.join(args.out, "known_hosts"), "".join(f"{line}\n" for line in known))
     return 0
 
 
