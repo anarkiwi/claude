@@ -131,8 +131,9 @@ All host-side sources are the invoking identity's `$HOME`.
   entrypoint copies each to a writable in-container path, so session writes stay
   ephemeral and never touch the host. For settings it also overlays the image's
   canonical `settings.json` (see [Settings](#settings)).
-- `/scratch`, the host docker socket, `/etc/pip.conf`, `~/.config/gh` and
-  `~/.gitconfig` (ro).
+- `/scratch`, `/etc/pip.conf`, `~/.config/gh` and `~/.gitconfig` (ro).
+- A host-local directory holding the docker proxy's socket, at
+  `/run/docker-proxy`; see [Docker](#docker).
 - `~/.ssh` (ro, so the private keys cannot be altered from a session).
 - `~/.ssh/fleet` at `/etc/ssh/fleet` (ro) — the only host keys the container
   trusts, and where each inventory name connects; see [Host keys](#host-keys).
@@ -167,6 +168,41 @@ only in the container and is discarded on exit. With no args, `run.sh` starts a
 `--remote-control` session named `claude-<host>-<dir>`; the prefix keeps these
 containers apart from everything else in a host's `docker ps`, including the
 ones a session starts for itself.
+
+## Docker
+
+The session has no host docker socket. `run.sh` starts
+[socket-proxy](https://github.com/wollomatic/socket-proxy) as a sibling
+container, `<name>.docker`, holding the host socket and serving a proxied one
+in a `mktemp -d` directory on the host, which the session mounts at
+`/run/docker-proxy`; the image links `/run/docker.sock` (so also
+`/var/run/docker.sock`) to it, so the CLI, compose and the SDKs need no
+configuration. The proxy runs as the identity's UID with the host `docker`
+group, read-only, without capabilities or network, and is removed when the
+session ends; a leftover from a crashed run is removed at the next start. Its
+version is the `FROM` line of `Dockerfile.docker-proxy`, which exists so
+dependabot tracks it.
+
+Every API call passes except a bind mount whose host source is outside the
+proxy's allowlist, which fails with `Forbidden`. That covers `-v`, `--mount
+type=bind`, local volumes with `o=bind`, and `--volumes-from`. The allowlist is
+computed on each run from the host filesystem as everything except
+
+    /home  /root  /proc  /var/run  /run/docker.sock  $(realpath $HOME)
+
+expanding only the ancestors of a denied path, so `/run` contributes its
+entries other than `docker.sock`, and `/` itself is not allowed. So a container
+an agent starts can neither write the identity's home, nor reach it through
+`/proc/<pid>/root`, nor take the raw socket, which would bypass the proxy. The
+only host state under `~` the session can change is what `run.sh` mounts for
+it: the credentials file and `~/.config/gh`. Read-only binds of those paths
+are refused too.
+
+The proxy is a request filter, not a sandbox. It does not resolve symlinks on
+the host, so a link under an allowed directory that points into `/home` is
+followed by the daemon; nor does it restrict `--privileged`, devices or host
+namespaces. It does not cover remote hosts either: a session that reaches the
+host over ssh (or `docker -H ssh://`) acts as the identity there.
 
 ## Settings
 

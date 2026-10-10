@@ -3,8 +3,9 @@
 # user: one of the shared "claude" (default) or "ansible" identities, whose
 # UID/GID and home directory path carry into the container unchanged, so every
 # bind-mounted path keeps correct ownership without any privilege escalation.
-# The host's docker socket, /scratch, apt/pip proxy config and the identity's
-# ~/.ssh, ~/.config/gh and ~/.gitconfig are mounted in.
+# /scratch, apt/pip proxy config and the identity's ~/.ssh, ~/.config/gh and
+# ~/.gitconfig are mounted in, and docker is reached through a proxy that keeps
+# the containers a session starts from binding /home (see DOCKER PROXY below).
 #
 # Credentials come from the identity's own ~/.claude and are the only host state
 # mounted read-write, so a login inside the container persists -- see the CREDS
@@ -312,11 +313,65 @@ if [[ -f /etc/apt/apt.conf ]]; then
     APT_PROXY_MOUNTS+=(-v /etc/apt/apt.conf:/etc/apt/apt.conf:ro)
 fi
 
+# DOCKER PROXY: the session never sees the host's docker socket, only a
+# socket-proxy in front of it whose bind-mount allowlist covers the host
+# filesystem except the paths in DENY. A container the session starts can
+# therefore neither write the identity's home -- the read-write mounts above
+# are this script's, not the session's -- nor take the raw socket, nor reach
+# either through /proc/<pid>/root. The allowlist is every directory entry that
+# does not lead to a denied path, expanded only along the ancestors of one,
+# since the proxy matches binds by path prefix.
+DENY=(/home /root /proc /var/run /run/docker.sock
+    "$(realpath "${HOME}")" "$(realpath /var/run/docker.sock)")
+bind_allow() {
+    local child deny
+    while IFS= read -r -d '' child; do
+        for deny in "${DENY[@]}"; do
+            [[ "${child}" == "${deny}" ]] && continue 2
+        done
+        for deny in "${DENY[@]}"; do
+            if [[ "${deny}" == "${child}/"* ]]; then
+                bind_allow "${child}"
+                continue 2
+            fi
+        done
+        printf '%s\n' "${child}"
+    done < <(find "$1" -mindepth 1 -maxdepth 1 -print0)
+}
+PROXY_IMAGE="$(awk '/^FROM/{print $2}' "${SCRIPT_DIR}/Dockerfile.docker-proxy")"
+PROXY_NAME="${NAME}.docker"
+# Host-local, not under /scratch: a unix socket is only reachable on the host
+# that made it.
+PROXY_DIR="$(mktemp -d)"
+docker rm -f "${PROXY_NAME}" >/dev/null 2>&1 || true
+trap 'docker rm -f "${PROXY_NAME}" >/dev/null 2>&1; rm -rf "${PROXY_DIR}"' EXIT
+docker run -d --name "${PROXY_NAME}" \
+    --user "${CONTAINER_UID}:${DOCKER_GID}" \
+    --read-only --cap-drop ALL --security-opt no-new-privileges --network none \
+    -v /var/run/docker.sock:/var/run/docker.sock \
+    -v "${PROXY_DIR}:/run/proxy" \
+    "${PROXY_IMAGE}" \
+    -proxysocketendpoint=/run/proxy/docker.sock \
+    -proxysocketendpointfilemode=0600 \
+    "-allowbindmountfrom=$(bind_allow / | paste -sd,)" \
+    '-allowGET=.*' '-allowHEAD=.*' '-allowPOST=.*' '-allowPUT=.*' '-allowDELETE=.*' \
+    >/dev/null
+for _ in {1..100}; do
+    [[ -S "${PROXY_DIR}/docker.sock" ]] && break
+    sleep 0.1
+done
+if [[ ! -S "${PROXY_DIR}/docker.sock" ]]; then
+    echo "!! docker proxy did not start:" >&2
+    docker logs "${PROXY_NAME}" >&2 || true
+    exit 1
+fi
+
 # --init runs Docker's built-in tini as the real PID 1 (entrypoint execs
 # claude as its child, not PID 1 itself), so orphaned grandchildren -- e.g.
 # workers left behind when claude kills a python multiprocessing pool -- get
-# reaped instead of turning into zombies.
-exec docker run --rm -it \
+# reaped instead of turning into zombies. Not exec'd, so the trap above stops
+# the docker proxy once the session ends.
+docker run --rm -it \
     --name "${NAME}" \
     --init \
     --pids-limit "${PIDS_LIMIT}" \
@@ -325,7 +380,7 @@ exec docker run --rm -it \
     "${HOST_DOCKER_ARGS[@]}" \
     -v "/scratch/tmp/${NAME}:/tmp" \
     -v /scratch:/scratch \
-    -v /var/run/docker.sock:/var/run/docker.sock \
+    -v "${PROXY_DIR}:/run/docker-proxy" \
     -v /etc/pip.conf:/etc/pip.conf:ro \
     "${APT_PROXY_MOUNTS[@]}" \
     "${SEED_MOUNT[@]}" \

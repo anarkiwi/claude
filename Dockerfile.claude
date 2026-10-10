@@ -7,7 +7,8 @@
 # copies to writable paths, so the client recognises the existing authenticated
 # install. The global CLAUDE.md is this repo's, baked into the image. All session state (conversations, history,
 # memories) stays in the container and is discarded on exit. Includes the
-# docker CLI (no daemon) for driving the host socket.
+# docker CLI (no daemon), which reaches the host daemon only through run.sh's
+# bind-filtering proxy.
 #
 # BASE_IMAGE is overridable per host (hosts/<hostname>.sh, via run.sh) so a
 # host with a GPU can build on an NVIDIA CUDA image instead; anything derived
@@ -125,6 +126,8 @@ RUN ln -sf "${HOME_DIR}/.local/share/claude/versions/${CLAUDE_VERSION}" \
 # directory mounted read-only, beside the ssh_config that routes each inventory
 # name. No user file means nothing in the session can add or replace a key,
 # and strict checking makes an unlisted host fail at once rather than prompt.
+# The default docker socket path leads to the proxy socket in the directory
+# run.sh mounts at /run/docker-proxy, so every client finds it unconfigured.
 USER root
 RUN printf '%s\n' \
         'Include /etc/ssh/fleet/ssh_config' \
@@ -132,7 +135,8 @@ RUN printf '%s\n' \
         'UserKnownHostsFile /dev/null' \
         'StrictHostKeyChecking yes' \
         'UpdateHostKeys no' \
-        > /etc/ssh/ssh_config.d/10-known-hosts.conf
+        > /etc/ssh/ssh_config.d/10-known-hosts.conf \
+    && ln -sf /run/docker-proxy/docker.sock /run/docker.sock
 USER ${CONTAINER_USER}
 
 COPY --chmod=0755 entrypoint.sh /usr/local/bin/entrypoint.sh
