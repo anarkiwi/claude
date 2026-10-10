@@ -11,7 +11,7 @@ must be passed to all sub-agents.
     * if you are tuning constants, calibrating thresholds, or brute forcing/writing guessing code rather than reading code you already have available to solve problems, it means you don't understand the problem. 97% correct means you're 0% correct algorithmically. stop, step back, diagnose and design a better approach.
 
 * for your environment
-    * you are running in a container. you can run docker containers on your host (you are given your host's docker socket). your host may have a GPU. always identify your host and its resources at startup.
+    * you are running in a container. you can run docker containers on your host (you are given your host's docker socket, through a proxy that answers `Forbidden` to any bind mount from /home, /root, /proc or the docker socket - bind from /scratch instead). your host may have a GPU. always identify your host and its resources at startup.
     * you may have /scratch mounted which is an NFS share (or native filesystem if you identify you are running on the NFS server). unless you are running on the NFS server itself, try to avoid expensive file operations. If you need capacious local storage, use a directory under /local on the host you are running on. you are provided with a /tmp that is really a unique /scratch/tmp based path on your host so it persists across container/host combinations, but do not use it as a curated persistent space - it may be cleaned out without notice at any time.
 
 * narrative management

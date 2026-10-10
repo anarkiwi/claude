@@ -1,0 +1,3 @@
+# Docker API proxy run.sh places between a session and the host daemon, so
+# dependabot tracks its version; run.sh runs this image directly.
+FROM wollomatic/socket-proxy:1.13.1

@@ -9,9 +9,11 @@ Containerized Claude Code and its PreToolUse guard hooks.
 
 Must be run as the shared `claude` (default) or `ansible` identity; any other
 user is rejected. Runs the native `claude` binary as that user, with its
-UID/GID, home path, `~/.ssh` and Claude Code credentials, plus the host's
-docker socket, `/scratch`, `~/.config/gh` and `~/.claude` settings
-bind-mounted in. Each identity on each host keeps its **own** login — sharing
+UID/GID, home path, `~/.ssh` and Claude Code credentials, plus `/scratch`,
+`~/.config/gh` and `~/.claude` settings bind-mounted in. Docker is reached only
+through a socket proxy that refuses any bind mount from `/home`, `/root`,
+`/proc` or the docker socket, so containers a session starts cannot write the
+identity's home. Each identity on each host keeps its **own** login — sharing
 one across containers invalidates it, see
 [docs/container.md](docs/container.md#credentials). Credentials are the only
 read-write host state; config is read-only, and session state (conversations,
