@@ -320,7 +320,8 @@ fi
 # are this script's, not the session's -- nor take the raw socket, nor reach
 # either through /proc/<pid>/root. The allowlist is every directory entry that
 # does not lead to a denied path, expanded only along the ancestors of one,
-# since the proxy matches binds by path prefix.
+# since the proxy matches binds by path prefix. ~/.ssh is re-allowed so tools
+# like finf-ansible can hand the identity's keys to their own containers.
 DENY=(/home /root /proc /var/run /run/docker.sock
     "$(realpath "${HOME}")" "$(realpath /var/run/docker.sock)")
 bind_allow() {
@@ -353,7 +354,7 @@ docker run -d --name "${PROXY_NAME}" \
     "${PROXY_IMAGE}" \
     -proxysocketendpoint=/run/proxy/docker.sock \
     -proxysocketendpointfilemode=0600 \
-    "-allowbindmountfrom=$(bind_allow / | paste -sd,)" \
+    "-allowbindmountfrom=$(bind_allow / | paste -sd,),$(realpath "${HOME}")/.ssh" \
     '-allowGET=.*' '-allowHEAD=.*' '-allowPOST=.*' '-allowPUT=.*' '-allowDELETE=.*' \
     >/dev/null
 for _ in {1..100}; do
