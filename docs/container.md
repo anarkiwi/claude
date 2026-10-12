@@ -193,10 +193,15 @@ computed on each run from the host filesystem as everything except
 expanding only the ancestors of a denied path, so `/run` contributes its
 entries other than `docker.sock`, and `/` itself is not allowed. So a container
 an agent starts can neither write the identity's home, nor reach it through
-`/proc/<pid>/root`, nor take the raw socket, which would bypass the proxy. The
-only host state under `~` the session can change is what `run.sh` mounts for
-it: the credentials file and `~/.config/gh`. Read-only binds of those paths
-are refused too.
+`/proc/<pid>/root`, nor take the raw socket, which would bypass the proxy.
+
+The one exception is `$(realpath $HOME)/.ssh`, appended to the allowlist so
+tools such as finf-ansible can give their containers the identity's ssh keys.
+The proxy cannot enforce `:ro`, so a container a session starts can bind
+`~/.ssh` read-write even though the session's own mount of it is read-only.
+Apart from that, the only host state under `~` the session can change is what
+`run.sh` mounts for it: the credentials file and `~/.config/gh`. Read-only binds
+of those paths are refused too.
 
 The proxy is a request filter, not a sandbox. It does not resolve symlinks on
 the host, so a link under an allowed directory that points into `/home` is
