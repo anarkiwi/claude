@@ -5,7 +5,7 @@ Containerized Claude Code and its PreToolUse guard hooks.
 ## Use
 
     ./run.sh                 # build image, start an interactive Remote Control session
-    ./run.sh <claude args>   # override the default session
+    ./run.sh <claude args>   # extra args go to claude, e.g. --resume <session-id>
 
 Must be run as the shared `claude` (default) or `ansible` identity; any other
 user is rejected. Runs the native `claude` binary as that user, with its

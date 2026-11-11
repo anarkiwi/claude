@@ -12,8 +12,8 @@
 # block below for why each identity on each host keeps its own. Config
 # (~/.claude.json, settings.json) is mounted read-only and copied to writable
 # paths by the entrypoint, so the client recognises the existing install; the
-# global CLAUDE.md comes from this repo via the image; session state (conversations, history, memories) lives in the
-# container and is discarded when it exits. /tmp is host-backed so it can be
+# global CLAUDE.md comes from this repo via the image; conversation transcripts
+# persist in ~/.claude/projects, other session state is discarded on exit. /tmp is host-backed so it can be
 # inspected from outside, and is emptied at startup rather than carried over,
 # except for the venv that lives in it.
 set -euo pipefail
@@ -225,11 +225,18 @@ docker build \
     --build-context "claude-dist=${CLAUDE_CACHE}/${CLAUDE_VERSION}" \
     -t "${IMAGE}" -f "${SCRIPT_DIR}/Dockerfile.claude" "${SCRIPT_DIR}"
 
-# Default to an interactive Remote Control session under NAME when no explicit
-# claude args are given; passing any args overrides this default.
+# Every session is a Remote Control session under NAME; arguments are passed to
+# claude after it (e.g. --resume <id>). Supplying --remote-control (or --rc)
+# yourself replaces the default.
 RUN_ARGS=("$@")
-if [[ ${#RUN_ARGS[@]} -eq 0 ]]; then
-    RUN_ARGS=(--remote-control "${NAME}")
+HAVE_RC=0
+for arg in "${RUN_ARGS[@]}"; do
+    case "${arg}" in
+    --remote-control | --remote-control=* | --rc | --rc=*) HAVE_RC=1 ;;
+    esac
+done
+if [[ ${HAVE_RC} -eq 0 ]]; then
+    RUN_ARGS=(--remote-control "${NAME}" "${RUN_ARGS[@]}")
 fi
 
 # Host-side mount for the container's /tmp, one dir per container name, created
@@ -301,6 +308,11 @@ if [[ ! -f "${CREDS}" ]]; then
     install -d -m 0700 "$(dirname "${CREDS}")"
     install -m 0600 /dev/null "${CREDS}"
 fi
+
+# Conversation transcripts persist in the identity's ~/.claude/projects, so a
+# session that died with its container can be continued with --resume <id>.
+PROJECTS="${HOME}/.claude/projects"
+install -d -m 0700 "${PROJECTS}"
 
 # Mount the host's apt proxy/cache config read-only, if present, so runtime
 # apt-get installs (see entrypoint.sh) go through the same proxy as the host
@@ -387,6 +399,7 @@ docker run --rm -it \
     "${SEED_MOUNT[@]}" \
     "${SETTINGS_MOUNT[@]}" \
     -v "${CREDS}:${CREDS}" \
+    -v "${PROJECTS}:${PROJECTS}" \
     -v "${HOME}/.ssh:${HOME}/.ssh:ro" \
     -v "${FLEET_DIR}:/etc/ssh/fleet:ro" \
     -v "${HOME}/.config/gh:${HOME}/.config/gh" \
