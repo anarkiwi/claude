@@ -37,7 +37,7 @@ must be passed to all sub-agents.
 
 * if the project is a git repo:
     * if a public: must not include any copyrighted material, but you can can retrieve and cache for fixtures.
-    * use git worktrees and branches always, and delete them locally and remotely when you're done.
+    * use git worktrees and branches always, and delete them locally and remotely when you're done (preferably enable delete-branch-after-merge on the repo).
     * commit and push to PRs, always watch PR status and fix broken tests and merge on green.
-    * must have dependabot and CI tests. if the tests involve non-trivial software installs or configs, they must run in Docker and must be leverage multistage to reduce rebuild times for dependencies
+    * must have dependabot and CI tests. if the tests involve non-trivial software installs or configs, they must run in Docker and must be leverage multistage to reduce rebuild times for dependencies. 
     * to keep persistent but untracked test artifacts, logs, etc put them in a gitignored directory in whichever repo you are in. do not create new non-repo directories outside of the repo you are working in.
