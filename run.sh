@@ -12,8 +12,8 @@
 # block below for why each identity on each host keeps its own. Config
 # (~/.claude.json, settings.json) is mounted read-only and copied to writable
 # paths by the entrypoint, so the client recognises the existing install; the
-# global CLAUDE.md comes from this repo via the image; conversation transcripts
-# persist in ~/.claude/projects, other session state is discarded on exit. /tmp is host-backed so it can be
+# global CLAUDE.md comes from this repo via the image; session state (conversations, history, memories) lives in the
+# container and is discarded when it exits. /tmp is host-backed so it can be
 # inspected from outside, and is emptied at startup rather than carried over,
 # except for the venv that lives in it.
 set -euo pipefail
@@ -309,11 +309,6 @@ if [[ ! -f "${CREDS}" ]]; then
     install -m 0600 /dev/null "${CREDS}"
 fi
 
-# Conversation transcripts persist in the identity's ~/.claude/projects, so a
-# session that died with its container can be continued with --resume <id>.
-PROJECTS="${HOME}/.claude/projects"
-install -d -m 0700 "${PROJECTS}"
-
 # Mount the host's apt proxy/cache config read-only, if present, so runtime
 # apt-get installs (see entrypoint.sh) go through the same proxy as the host
 # -- mirrors the pip.conf mount below for pip.
@@ -399,7 +394,6 @@ docker run --rm -it \
     "${SEED_MOUNT[@]}" \
     "${SETTINGS_MOUNT[@]}" \
     -v "${CREDS}:${CREDS}" \
-    -v "${PROJECTS}:${PROJECTS}" \
     -v "${HOME}/.ssh:${HOME}/.ssh:ro" \
     -v "${FLEET_DIR}:/etc/ssh/fleet:ro" \
     -v "${HOME}/.config/gh:${HOME}/.config/gh" \

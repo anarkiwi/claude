@@ -162,11 +162,9 @@ All host-side sources are the invoking identity's `$HOME`.
   binding is built against the headers whether or not a device is attached,
   and the container's `/dev` snapshot misses anything plugged in later.
 
-`.credentials.json` and `projects/` (conversation transcripts) are the only
-read-write host state, so a fresh login sticks and a crashed session can be
-continued with `./run.sh --resume <session-id>`; config is read-only. Other
-session state — history, memories — lives only in the container and is
-discarded on exit. `run.sh` always starts a `--remote-control` session named
+`.credentials.json` is the only read-write host state, so a fresh login sticks;
+config is read-only. Session state — conversations, history, memories — lives
+only in the container and is discarded on exit. `run.sh` always starts a `--remote-control` session named
 `claude-<host>-<dir>`, with any args passed on to claude (give `--remote-control`
 yourself to replace it); the prefix keeps these
 containers apart from everything else in a host's `docker ps`, including the
