@@ -349,9 +349,10 @@ Both are plain shell variables (`PIDS_LIMIT`, `MEMORY_LIMIT`) set before
 reassigning them, in addition to appending to `HOST_DOCKER_ARGS`.
 
 The image sets `OMP_NUM_THREADS`, `MKL_NUM_THREADS`, `OPENBLAS_NUM_THREADS`,
-`NUMEXPR_NUM_THREADS` and `NUMBA_NUM_THREADS` to `2`. Unset, each numpy
-process sizes its BLAS pool to the host's cores, so `pytest -n auto` alone can
-exhaust the pids limit, and `claude` aborts when it cannot create a thread.
+`NUMEXPR_NUM_THREADS`, `NUMBA_NUM_THREADS` and `RAYON_NUM_THREADS` to `2`.
+Unset, each numpy process (or Rust extension using rayon) sizes its pool to
+the host's cores, so `pytest -n auto` alone can exhaust the pids limit, and
+`claude` aborts when it cannot create a thread.
 Raise them per command for a single process that should use more cores.
 
 ## APT proxy

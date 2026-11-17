@@ -105,15 +105,17 @@ WORKDIR /scratch/anarkiwi/infra/claude
 
 ENV PATH="${HOME_DIR}/.local/bin:${PATH}"
 
-# BLAS/OpenMP/numba pools otherwise size themselves to the host's cores in every
-# process, so parallel test workers multiply into thousands of threads and
-# exhaust --pids-limit; claude itself aborts when it cannot create a thread.
+# BLAS/OpenMP/numba/rayon pools otherwise size themselves to the host's cores
+# in every process, so parallel test workers multiply into thousands of threads
+# and exhaust --pids-limit; claude itself aborts when it cannot create a
+# thread.
 # Override per command where one process should use more cores.
 ENV OMP_NUM_THREADS=2 \
     MKL_NUM_THREADS=2 \
     OPENBLAS_NUM_THREADS=2 \
     NUMEXPR_NUM_THREADS=2 \
-    NUMBA_NUM_THREADS=2
+    NUMBA_NUM_THREADS=2 \
+    RAYON_NUM_THREADS=2
 
 # Native claude install, laid out exactly as claude.ai/install.sh leaves it:
 # the versioned binary under ~/.local/share (outside the mounted ~/.claude),
