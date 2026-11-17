@@ -181,9 +181,11 @@ NAME="claude-${HOST}-${REPO_NAME}"
 
 # Resource caps, overridable per host (see below): --pids-limit guards
 # against runaway forks (relevant to the --init/zombie-reaping note further
-# down); MEMORY_LIMIT defaults to all host RAM minus 1G of headroom for the
-# host itself.
-PIDS_LIMIT="${PIDS_LIMIT:-2048}"
+# down) and counts threads, so it scales with cores: a parallel test run
+# starts a worker per core, each with its own thread pools, and claude aborts
+# outright when it cannot create a thread. MEMORY_LIMIT defaults to all host
+# RAM minus 1G of headroom for the host itself.
+PIDS_LIMIT="${PIDS_LIMIT:-$(( $(nproc) * 128 > 4096 ? $(nproc) * 128 : 4096 ))}"
 HOST_MEM_BYTES="$(free -b | awk '/^Mem:/{print $2}')"
 MEMORY_LIMIT="${MEMORY_LIMIT:-$(( (HOST_MEM_BYTES - 1073741824) / 1048576 ))m}"
 

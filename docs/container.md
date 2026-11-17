@@ -342,11 +342,17 @@ instead of leaving zombies.
 
 ## Resource caps
 
-`docker run` is passed `--pids-limit` (default `2048`, guarding against
-runaway forks) and `--memory` (default: total host RAM minus 1G of headroom).
+`docker run` is passed `--pids-limit` (default `128 * nproc`, at least
+`4096`, guarding against runaway forks; threads count against it) and `--memory` (default: total host RAM minus 1G of headroom).
 Both are plain shell variables (`PIDS_LIMIT`, `MEMORY_LIMIT`) set before
 `hosts/<hostname>.sh` is sourced, so a host config can override either by
 reassigning them, in addition to appending to `HOST_DOCKER_ARGS`.
+
+The image sets `OMP_NUM_THREADS`, `MKL_NUM_THREADS`, `OPENBLAS_NUM_THREADS`,
+`NUMEXPR_NUM_THREADS` and `NUMBA_NUM_THREADS` to `2`. Unset, each numpy
+process sizes its BLAS pool to the host's cores, so `pytest -n auto` alone can
+exhaust the pids limit, and `claude` aborts when it cannot create a thread.
+Raise them per command for a single process that should use more cores.
 
 ## APT proxy
 
