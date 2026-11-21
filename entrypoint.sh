@@ -39,6 +39,14 @@ printf '%s' "${BASE}" | jq --slurpfile s "${IMAGE_SETTINGS}" '
     | .permissions.allow = union($host.permissions.allow; $s[0].permissions.allow)
 ' > "${SETTINGS}"
 
+# Auto-memory lives in the container's private /dev/shm tmpfs (the image
+# settings.json points autoMemoryDirectory there), so it dies with the
+# container. Wipe it, and any memory under the default per-project path, before
+# the client starts, so no session ever reads another's memories.
+MEMORY_DIR="$(jq -r '.autoMemoryDirectory' "${SETTINGS}")"
+rm -rf "${MEMORY_DIR}" "${HOME}"/.claude/projects/*/memory
+install -d -m 0700 "${MEMORY_DIR}"
+
 # /tmp is a host mount so the client's working files are visible from outside
 # (see run.sh), which would otherwise carry a session's scratch into the next
 # one: empty it here instead, so only the live session's state is ever present.

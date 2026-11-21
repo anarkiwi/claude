@@ -1,4 +1,5 @@
 {
+  "autoMemoryDirectory": "/dev/shm/claude-memory",
   "permissions": {
     "allow": [
       "Bash(cd:*)",
