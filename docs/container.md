@@ -164,7 +164,11 @@ All host-side sources are the invoking identity's `$HOME`.
 
 `.credentials.json` is the only read-write host state, so a fresh login sticks;
 config is read-only. Session state — conversations, history, memories — lives
-only in the container and is discarded on exit. `run.sh` always starts a `--remote-control` session named
+only in the container and is discarded on exit. Auto-memory is written to
+`/dev/shm/claude-memory` (`autoMemoryDirectory` in the image `settings.json`),
+the container's private tmpfs, and the entrypoint deletes it and any default
+`~/.claude/projects/*/memory` before starting the client, so every session
+starts with no memories. `run.sh` always starts a `--remote-control` session named
 `claude-<host>-<dir>`, with any args passed on to claude (give `--remote-control`
 yourself to replace it); the prefix keeps these
 containers apart from everything else in a host's `docker ps`, including the
