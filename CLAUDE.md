@@ -29,6 +29,7 @@ must be passed to all sub-agents.
         * must pass black formatting and pylint (in particular no unused imports or vars) - test these things before commiting so you don't waste CI time failing trivial checks)
         * must use xdist/auto for full test runs. only run the tests you need to first, save full runs for when you are getting ready to push.
         * never test or add EOL python versions or non-Linux platforms.
+        * if pysayme is not a dependency already, add it as part of CI having fixed any issues it finds in behavior mode.
 
 * if the project is a git repo:
     * always keep the main checkout to date. after every merge refresh main.
